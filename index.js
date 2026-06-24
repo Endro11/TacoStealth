@@ -8,13 +8,34 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-// This master object holds the live state of every player in the game
 const players = {};
+let gamePhase = 'LOBBY';
+let seekerSocketId = null;
+let gameTimer = null;
+let timeLeft = 0;
+let lastHideTime = 45;
+let lastSeekTime = 120;
+
+function broadcastGameState() {
+    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
+}
+
+function checkReveal() {
+    const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
+    if (hiders.length > 0 && hiders.every(p => p.isDead)) {
+        gamePhase = 'REVEAL';
+        timeLeft = 0;
+        clearInterval(gameTimer);
+        broadcastGameState();
+        console.log('🎉 All hiders poked! REVEAL phase.');
+    }
+}
 
 io.on('connection', (socket) => {
     console.log('🟢 New connection ID:', socket.id);
 
-    // 1. When a player types their name and clicks "SPAWN IN"
+    socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
+
     socket.on('joinGame', (playerData) => {
         players[socket.id] = {
             id: socket.id,
@@ -26,46 +47,77 @@ io.on('connection', (socket) => {
             isDead: false
         };
         console.log(`👤 ${playerData.name} joined Taco Stealth!`);
-        
-        // Broadcast the updated player list to EVERYONE
         io.emit('updatePlayers', players);
     });
 
-    // 2. When a player moves the joystick, changes pose, or paints
     socket.on('playerUpdate', (data) => {
         if (players[socket.id]) {
             players[socket.id].x = data.x;
             players[socket.id].y = data.y;
             players[socket.id].pose = data.pose;
             players[socket.id].color = data.color;
-            
-            // Broadcast their new location/color to everyone else in the room
             socket.broadcast.emit('updatePlayers', players);
         }
     });
 
-    // 3. When the Seeker clicks on a Hider
+    socket.on('startGame', (data) => {
+        const seeker = Object.values(players).find(p => p.name === data.seekerName.toUpperCase());
+        seekerSocketId = seeker ? seeker.id : null;
+        lastHideTime = data.hideTime || 45;
+        lastSeekTime = data.seekTime || 120;
+
+        Object.values(players).forEach(p => { p.isDead = false; });
+        io.emit('updatePlayers', players);
+
+        gamePhase = 'HIDING';
+        timeLeft = lastHideTime;
+        broadcastGameState();
+        console.log(`🙈 HIDING phase! Seeker: ${data.seekerName}, Hide: ${lastHideTime}s`);
+
+        clearInterval(gameTimer);
+        gameTimer = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                clearInterval(gameTimer);
+                gamePhase = 'SEEKING';
+                timeLeft = lastSeekTime;
+                broadcastGameState();
+                console.log(`👁️ SEEKING phase! Seek: ${lastSeekTime}s`);
+
+                gameTimer = setInterval(() => {
+                    timeLeft--;
+                    if (timeLeft <= 0) {
+                        clearInterval(gameTimer);
+                        gamePhase = 'REVEAL';
+                        timeLeft = 0;
+                        broadcastGameState();
+                        console.log('🎉 REVEAL phase!');
+                        return;
+                    }
+                    broadcastGameState();
+                }, 1000);
+                return;
+            }
+            broadcastGameState();
+        }, 1000);
+    });
+
     socket.on('pokePlayer', (targetId) => {
-        if (players[targetId]) {
+        if (players[targetId] && gamePhase === 'SEEKING') {
             players[targetId].isDead = true;
             console.log(`💀 ${players[targetId].name} got poked!`);
-            
-            // Tell everyone the player is dead
             io.emit('updatePlayers', players);
-            
-            // Tell that specific player's device to trigger the Pickle Slide physics
-            io.to(targetId).emit('triggerPickleSlide'); 
+            io.to(targetId).emit('triggerPickleSlide');
+            checkReveal();
         }
     });
 
-    // 4. When someone closes the tab on their phone/computer
     socket.on('disconnect', () => {
         if (players[socket.id]) {
             console.log(`🔴 ${players[socket.id].name} disconnected.`);
             delete players[socket.id];
-            
-            // Update the remaining players so the disconnected avatar vanishes
             io.emit('updatePlayers', players);
+            if (gamePhase === 'SEEKING') checkReveal();
         }
     });
 });

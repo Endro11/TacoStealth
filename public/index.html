@@ -41,6 +41,19 @@
         #joystick-zone { position: absolute; bottom: 150px; left: 20px; width: 100px; height: 100px; z-index: 10; touch-action: none; display: none; }
         #joystick-base { position: absolute; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.25); border-radius: 50%; }
         #joystick-stick { position: absolute; top: 50%; left: 50%; width: 38px; height: 38px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+
+        #phase-hud { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; z-index: 10; pointer-events: none; font-family: monospace; color: #fff; font-size: 1.3em; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,255,0.4), 2px 2px 2px #000; }
+        #timer-hud { font-size: 1.8em; color: #ffeb3b; text-shadow: 0 0 12px rgba(255,235,59,0.8), 2px 2px 2px #000; }
+
+        #seeker-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 20; flex-direction: column; align-items: center; justify-content: center; gap: 20px; display: none; }
+        #seeker-overlay .boot-title { color: #00ff41; font-family: monospace; font-size: 1.8em; font-weight: bold; letter-spacing: 4px; animation: pulse 1s infinite; }
+        #seeker-overlay .boot-timer { color: #00ff41; font-family: monospace; font-size: 5em; font-weight: bold; text-shadow: 0 0 20px #00ff41; }
+        #seeker-overlay .boot-sub { color: #006622; font-family: monospace; font-size: 0.85em; letter-spacing: 2px; }
+        @keyframes scanline { 0% { top: -10%; } 100% { top: 110%; } }
+        #seeker-overlay::after { content: ''; position: absolute; left: 0; width: 100%; height: 4px; background: rgba(0,255,65,0.15); animation: scanline 3s linear infinite; pointer-events: none; }
+
+        #reveal-banner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 10px; z-index: 15; pointer-events: none; }
+        #reveal-banner .reveal-title { color: #fff; font-family: monospace; font-size: 2.5em; font-weight: bold; text-shadow: 0 0 20px #fff; letter-spacing: 4px; }
     </style>
 </head>
 <body>
@@ -57,6 +70,8 @@
         <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
         <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
         <div class="setting-row"><span>Seeker Pokes:</span> <input type="number" id="pokeCount" value="5"></div>
+        <div class="setting-row"><span>Seeker Name:</span> <input type="text" id="seekerName" placeholder="NAME" maxlength="12" style="width:80px; text-transform:uppercase; font-weight:bold;"></div>
+        <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
     </div>
 
@@ -76,6 +91,14 @@
         <button class="nav-btn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
         <button class="nav-btn" onclick="triggerRagdollDeath()" style="background: #c62828;">💀 POKE</button>
         <button class="nav-btn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
+    </div>
+
+    <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
+
+    <div id="seeker-overlay">
+        <div class="boot-title">📷 BOOTING CAMERAS...</div>
+        <div class="boot-timer" id="overlay-timer"></div>
+        <div class="boot-sub">PLEASE STAND BY — DO NOT LOOK</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -105,12 +128,28 @@
         socket.on('connect', () => { console.log('Connected to server!'); });
 
         let otherPlayers = {};
+        let gamePhase = 'LOBBY';
+        let seekerSocketId = null;
+
         socket.on('updatePlayers', (players) => { otherPlayers = players; });
         socket.on('triggerPickleSlide', () => {
             isDead = true;
             document.getElementById('modeBtn').innerText = "💀 DEAD";
             document.getElementById('modeBtn').style.background = "#000";
             updateUI();
+        });
+        socket.on('gameState', (state) => {
+            gamePhase = state.phase;
+            seekerSocketId = state.seekerSocketId;
+            const isSeeker = socket.id === state.seekerSocketId;
+            const phaseLabels = { LOBBY: '', HIDING: '🙈 HIDING', SEEKING: '👁️ SEEKING', REVEAL: '🎉 REVEAL!' };
+            document.getElementById('phase-label').innerText = phaseLabels[state.phase] || '';
+            document.getElementById('timer-hud').innerText = state.timeLeft > 0 ? state.timeLeft + 's' : '';
+            document.getElementById('overlay-timer').innerText = state.timeLeft > 0 ? state.timeLeft + 's' : '';
+            const overlay = document.getElementById('seeker-overlay');
+            overlay.style.display = (state.phase === 'HIDING' && isSeeker) ? 'flex' : 'none';
+            const recLight = document.getElementById('rec-light');
+            recLight.classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
         });
 
         const canvas = document.getElementById('gameCanvas');
@@ -146,6 +185,14 @@
         }
 
         function toggleSettingsModal(show) { document.getElementById('settings-modal').style.display = show ? 'flex' : 'none'; }
+
+        function startGame() {
+            const seekerName = document.getElementById('seekerName').value.trim().toUpperCase();
+            const hideTime = parseInt(document.getElementById('hideTime').value) || 45;
+            const seekTime = parseInt(document.getElementById('seekTime').value) || 120;
+            socket.emit('startGame', { seekerName, hideTime, seekTime });
+            toggleSettingsModal(false);
+        }
         
         const wheelCvs = document.getElementById('wheelCanvas'), wCtx = wheelCvs.getContext('2d'), wRadius = wheelCvs.width / 2;
         function drawWheel() {
@@ -256,7 +303,7 @@
             } 
         };
         canvas.onclick = (e) => {
-            if (isDead || isPaint || isDrop || !isJoined) return;
+            if (isDead || isPaint || isDrop || !isJoined || gamePhase !== 'SEEKING') return;
             const wx = (e.clientX - camera.x) / camera.scale, wy = (e.clientY - camera.y) / camera.scale;
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id) return;
@@ -307,6 +354,10 @@
             
             ctx.filter = "blur(0.8px) drop-shadow(0px 0px 1px rgba(0,0,0,0.2))";
             ctx.drawImage(active.cvs, 0, 0);
+
+            if (gamePhase === 'REVEAL' && !isDead && socket.id !== seekerSocketId) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3; ctx.stroke(active.path);
+            }
             
             ctx.save(); ctx.clip(active.path);
             const g = ctx.createLinearGradient(0,0,75,75); g.addColorStop(0,'rgba(255,255,255,0.05)'); g.addColorStop(1,'rgba(0,0,0,0.10)'); ctx.fillStyle=g; ctx.fill(active.path);
@@ -343,6 +394,9 @@
                 ctx.translate(-playerSize/2, -playerSize/2);
                 ctx.fillStyle = op.color || '#888';
                 ctx.fill(opPose.path);
+                if (gamePhase === 'REVEAL' && !op.isDead && op.id !== seekerSocketId) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3; ctx.stroke(opPose.path);
+                }
                 ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(-2, -18, playerSize + 4, 16);
                 ctx.fillStyle = '#FFF'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
                 ctx.fillText(op.name, playerSize / 2, -5);
