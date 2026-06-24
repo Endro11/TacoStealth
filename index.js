@@ -41,22 +41,14 @@ function broadcastScores() {
     io.emit('updateScores', Object.values(scores));
 }
 
+// Seeker catches are scored immediately as they happen (see pokeAt). At REVEAL we only
+// hand out survival points to the hiders who were never caught.
 function tallyScores() {
     const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
-    const seeker = players[seekerSocketId];
-
     hiders.filter(p => !p.isDead).forEach(p => {
         if (!scores[p.name]) scores[p.name] = { name: p.name, survivals: 0, catches: 0 };
         scores[p.name].survivals += 1;
     });
-
-    if (seeker) {
-        const catchCount = hiders.filter(p => p.isDead).length;
-        if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
-        scores[seeker.name].catches += catchCount;
-        console.log(`📊 ${seeker.name} caught ${catchCount} hiders.`);
-    }
-
     broadcastScores();
 }
 
@@ -235,9 +227,17 @@ io.on('connection', (socket) => {
         seekerPokesLeft--;
         best.isDead = true;
         if (best.token) playerState[best.token] = { isDead: true };
+        // Award the catch point right away so a correct poke always scores.
+        const seeker = players[seekerSocketId];
+        if (seeker) {
+            if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
+            scores[seeker.name].catches += 1;
+        }
         console.log(`💀 ${best.name} got poked! (${seekerPokesLeft} pokes left)`);
         io.emit('updatePlayers', players);
         io.to(best.id).emit('triggerPickleSlide');
+        io.to(seekerSocketId).emit('pokeResult', { hit: true, name: best.name, pokesLeft: seekerPokesLeft });
+        broadcastScores();
         broadcastGameState();
         checkReveal();
     });

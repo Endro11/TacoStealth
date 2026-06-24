@@ -22,6 +22,8 @@
         .ui-row { display: flex; gap: 8px; width: 100%; align-items: center; justify-content: center; }
         button, .btn-custom { padding: 10px; font-weight: bold; cursor: pointer; border: none; border-radius: 6px; background: #333; color: #fff; font-size: 0.85em; flex-grow: 1; text-align: center; text-transform: uppercase; }
         .btn-custom { background: #2e7d32; }
+        .cam-load { flex: 1; background: #37474f; color: #fff; padding: 8px 4px; font-size: 0.72em; font-weight: bold; text-align: center; border-radius: 6px; cursor: pointer; }
+        .cam-load:active { background: #455a64; }
         #poseBtn { background: #f9a825; color: black; }
         
         #colorSwatch { width: 45px; height: 35px; border: 2px solid #fff; border-radius: 6px; background: #ff0000; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); flex-shrink: 0; }
@@ -102,7 +104,7 @@
         <button onclick="joinGame()" style="width: 100%; background: #1565c0; padding: 12px; color: white;">SPAWN IN</button>
     </div>
 
-    <div id="settings-modal" class="modal" style="display: none; top: 50%; transform: translate(-50%, -50%);">
+    <div id="settings-modal" class="modal" style="display: none; top: 50%; transform: translate(-50%, -50%); max-height: 90vh; overflow-y: auto;">
         <div class="modal-title">GAME SETTINGS</div>
         <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
         <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
@@ -115,6 +117,14 @@
             </div>
         </div>
         <button id="sampleBtn" onclick="loadSampleRooms()" style="width: 100%; background: #00695c; padding: 10px;">🌮 USE TACO BELL SCENES</button>
+        <div style="width:100%; border-top:1px solid #444; padding-top:10px;">
+            <div style="font-size:0.74em; color:#9fb0c8; margin-bottom:6px; text-align:center; letter-spacing:1px;">OR LOAD YOUR OWN PHOTOS</div>
+            <div style="display:flex; gap:6px;">
+                <label class="cam-load">📷 Dining<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],0); this.value='';" style="display:none;"></label>
+                <label class="cam-load">📷 Drive-Thru<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],1); this.value='';" style="display:none;"></label>
+                <label class="cam-load">📷 Kitchen<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],2); this.value='';" style="display:none;"></label>
+            </div>
+        </div>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
@@ -173,7 +183,6 @@
 
     <div id="ui-bar">
         <div class="ui-row">
-            <label class="btn-custom">📷 Load Map<input type="file" id="imageLoader" accept="image/*" style="display:none;"></label>
             <button id="poseBtn">🧍 Stand</button>
             <button id="modeBtn">🖌️ Paint</button>
         </div>
@@ -254,6 +263,14 @@
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3000);
         }
+        // Brief full-screen color wash (e.g. green on a successful poke) that fades itself out.
+        function flashScreen(color) {
+            const f = document.createElement('div');
+            f.style.cssText = 'position:fixed;inset:0;z-index:40;pointer-events:none;background:' + color + ';transition:opacity .5s ease;opacity:1;';
+            document.body.appendChild(f);
+            requestAnimationFrame(() => { f.style.opacity = '0'; });
+            setTimeout(() => f.remove(), 550);
+        }
         socket.on('hostStatus', ({ ok, host }) => { if (!ok) showToast('🔒 ' + host + ' is hosting this game'); });
         socket.on('seekerVolunteer', ({ name }) => { showToast('🙋 ' + name + ' wants to be seeker!'); });
 
@@ -292,6 +309,7 @@
                     const r = imageRect(myFeed);
                     player.x = r.x + r.w * (0.5 + (Math.random()*2-1) * 0.30) - playerSize/2;
                     player.y = r.y + r.h * (0.5 + (Math.random()*2-1) * 0.28) - playerSize/2;
+                    selfFlashUntil = Date.now() + 5000;   // pulse your blob so you can find it
                     setCamTitle();
                     showToast('🙈 You are hiding in the ' + feeds[currentFeed].name + ' — tap NEXT CAM to switch rooms');
                 }
@@ -331,6 +349,7 @@
         });
 
         socket.on('updateScores', (scoreData) => {
+            layoutLobbyScoreboard();   // keep standings clear of the name card
             const list = document.getElementById('score-list');
             if (!scoreData || scoreData.length === 0) {
                 list.innerHTML = '<div class="sb-empty">No rounds played yet.</div>';
@@ -348,7 +367,10 @@
         });
 
         const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        // No willReadFrequently: that hint forces the whole canvas onto the CPU and was making
+        // painting + the per-frame scene draw crawl. The eyedropper reads pixels only on release
+        // (rare), so GPU-accelerated rendering is the right trade.
+        const ctx = canvas.getContext('2d');
         function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if (typeof layoutLobbyScoreboard === 'function') layoutLobbyScoreboard(); }
         window.addEventListener('resize', resize); resize();
 
@@ -398,10 +420,15 @@
         let isDead = false, deadAt = 0;
         const deadAnimAt = {};   // other players' id -> time we first saw them dead (drives the slide anim)
 
-        let cHue = 0, cSat = 100, cLight = 50, activeColor = `hsl(${cHue}, ${cSat}%, ${cLight}%)`;
+        // Each player gets a distinct, bright starting color derived from their device token, so
+        // blobs are easy to see and tell apart before anyone paints a disguise.
+        function hashHue(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; }
+        let cHue = hashHue(myToken), cSat = 80, cLight = 55, activeColor = `hsl(${cHue}, ${cSat}%, ${cLight}%)`;
         let camera = { x: 0, y: 0, scale: 1 };
         let showBrushPreview = false, brushPreviewTimeout;
         let whistlePulseStart = 0;
+        let selfFlashUntil = 0;   // "▼ YOU" find-yourself flash expires at this time
+        let scanlinePattern = null;   // cached CRT scanline fill (built once, see loop)
         let lastEmitTime = 0;
 
         let isJoined = false;
@@ -466,7 +493,7 @@
             // Hit-test on the seeker's own screen, against exactly where each hider is drawn here.
             // This is what makes "poke right on the hider" actually land — no cross-device guessing.
             const wx = (seekerReticle.x - camera.x) / camera.scale, wy = (seekerReticle.y - camera.y) / camera.scale;
-            let best = null, bestDist = playerSize * 0.9;   // generous: roughly the avatar's reach
+            let best = null, bestDist = playerSize;   // generous: full avatar reach
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id || op.id === seekerSocketId || op.isDead) return;
                 if ((op.feed || 0) !== currentFeed) return;   // only hiders in the room I'm viewing
@@ -474,8 +501,13 @@
                 const d = Math.hypot(wx - (tl.x + playerSize/2), wy - (tl.y + playerSize/2));
                 if (d < bestDist) { bestDist = d; best = op; }
             });
-            if (best) socket.emit('pokeAt', { targetId: best.id, feed: currentFeed });   // miss = nothing sent, no poke wasted
+            if (best) socket.emit('pokeAt', { targetId: best.id, feed: currentFeed });   // server confirms via pokeResult
+            else showToast('🫥 Nothing there — no poke used');   // miss costs nothing
         }
+        // Server confirms a catch: clear feedback so a correct poke never feels like a miss.
+        socket.on('pokeResult', ({ hit, name }) => {
+            if (hit) { showToast('🎯 GOT ' + name + '! +1'); flashScreen('rgba(76,175,80,0.28)'); }
+        });
 
         function renderLobby() {
             const list = Object.values(otherPlayers);
@@ -496,15 +528,18 @@
             const sb = document.getElementById('scoreboard');
             const modal = document.getElementById('join-modal');
             const entryOpen = modal && getComputedStyle(modal).display !== 'none';
-            if (entryOpen && sb.style.display !== 'none') {
-                const r = modal.getBoundingClientRect();
+            if (entryOpen) {
+                // Name card is up: pin standings to the bottom-center so they sit clearly BELOW it
+                // and can never overlap the name input (no measurement to get wrong).
+                sb.style.top = 'auto';
+                sb.style.bottom = 'calc(14px + env(safe-area-inset-bottom))';
                 sb.style.left = '50%'; sb.style.right = 'auto';
                 sb.style.transform = 'translateX(-50%)';
-                sb.style.top = (r.bottom + 14) + 'px';
+                sb.style.maxWidth = '92vw';
             } else {
-                // Revert to the CSS-defined top-right corner.
-                sb.style.left = ''; sb.style.right = '';
-                sb.style.transform = ''; sb.style.top = '';
+                // Revert to the CSS-defined top-right corner (joined lobby view).
+                sb.style.top = ''; sb.style.bottom = ''; sb.style.left = '';
+                sb.style.right = ''; sb.style.transform = ''; sb.style.maxWidth = '';
             }
         }
 
@@ -620,8 +655,10 @@
             document.getElementById('brushLabel').innerText = e.target.value + 'px';
             showBrushPreview = true; clearTimeout(brushPreviewTimeout); brushPreviewTimeout = setTimeout(() => showBrushPreview = false, 800);
         });
-        document.getElementById('imageLoader').addEventListener('change', function(e) {
-            if (!e.target.files[0]) return;
+        // Host loads a custom photo onto a specific camera (lobby setup, in the host settings).
+        // hostMap is host-gated on the server, so only the host's photos actually broadcast.
+        function loadPhotoFile(file, feedIndex) {
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = function(ev) {
                 const img = new Image();
@@ -639,14 +676,15 @@
                     off.getContext('2d').drawImage(img, 0, 0, w, h);
                     const dataUrl = off.toDataURL('image/jpeg', 0.82);
                     const finalImg = new Image();
-                    finalImg.onload = () => { feeds[currentFeed].img = finalImg; };
+                    finalImg.onload = () => { feeds[feedIndex].img = finalImg; };
                     finalImg.src = dataUrl;
-                    socket.emit('hostMap', { feedIndex: currentFeed, dataUrl });
+                    socket.emit('hostMap', { feedIndex, dataUrl });
+                    showToast('📷 Loaded a photo onto ' + feeds[feedIndex].name);
                 };
                 img.src = ev.target.result;
             };
-            reader.readAsDataURL(e.target.files[0]);
-        });
+            reader.readAsDataURL(file);
+        }
 
         socket.on('loadMap', ({ feedIndex, dataUrl }) => {
             const img = new Image();
@@ -677,7 +715,7 @@
         const poses = [{path:getPath('stand'), icon:"🧍 Stand", cvs:document.createElement('canvas')}, {path:getPath('splat'), icon:"🤸 Splat", cvs:document.createElement('canvas')}];
         poses.forEach(pose => {
             pose.cvs.width = playerSize; pose.cvs.height = playerSize; const p = pose.cvs.getContext('2d');
-            p.fillStyle = '#666'; p.fill(pose.path); 
+            p.fillStyle = activeColor; p.fill(pose.path);   // start as a bright colored blob, not gray
             p.globalCompositeOperation = 'source-atop';
         });
 
@@ -723,6 +761,7 @@
             mousePanning = false;
             if(!mouseDown) return;
             mouseDown = false;
+            paintLast = null;   // end the brush stroke
             if(isDrop && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
             dragGrab = null;
         };
@@ -754,21 +793,28 @@
             else if(isJoined && !isDead && dragGrab) { e.preventDefault(); dragAvatarTo(e.touches[0].clientX, e.touches[0].clientY); }
         };
         canvas.ontouchend = () => {
-            isPanning = false; dragGrab = null;
+            isPanning = false; dragGrab = null; paintLast = null;   // end the brush stroke
             if(isDrop && dropTarget) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
         };
 
         // ---- Shared input helpers (used by both mouse and touch) ----
         function screenToWorld(sx, sy) { return { x: (sx - camera.x) / camera.scale, y: (sy - camera.y) / camera.scale }; }
 
+        let paintLast = null;   // last paint point (avatar-local coords) for smooth stroke interpolation
         function paintAt(sx, sy) {
             const w = screenToWorld(sx, sy);
-            if(w.x >= player.x && w.x <= player.x+playerSize && w.y >= player.y && w.y <= player.y+playerSize) {
-                const p = poses[currentIdx].cvs.getContext('2d');
-                p.fillStyle = activeColor; p.beginPath();
-                p.arc(w.x-player.x, w.y-player.y, document.getElementById('brushSize').value, 0, 7); p.fill();
-                scheduleAvatarSync();   // push the updated disguise to everyone
-            }
+            const lx = w.x - player.x, ly = w.y - player.y;
+            // Outside the avatar: break the stroke so re-entering doesn't draw a line across the gap.
+            if (lx < 0 || ly < 0 || lx > playerSize || ly > playerSize) { paintLast = null; return; }
+            const p = poses[currentIdx].cvs.getContext('2d');
+            const r = parseFloat(document.getElementById('brushSize').value);
+            p.fillStyle = activeColor; p.strokeStyle = activeColor;
+            p.lineWidth = r * 2; p.lineCap = 'round'; p.lineJoin = 'round';
+            // Connect to the previous sample so fast drags paint a continuous line, not dots.
+            if (paintLast) { p.beginPath(); p.moveTo(paintLast.x, paintLast.y); p.lineTo(lx, ly); p.stroke(); }
+            p.beginPath(); p.arc(lx, ly, r, 0, 7); p.fill();
+            paintLast = { x: lx, y: ly };
+            scheduleAvatarSync();   // push the updated disguise to everyone (debounced)
         }
 
         function pickColorAt(sx, sy) {
@@ -829,8 +875,23 @@
             ctx.scale(breath, breath);
             ctx.translate(-playerSize/2, -playerSize/2);
 
-            ctx.filter = "blur(0.8px) drop-shadow(0px 0px 1px rgba(0,0,0,0.2))";
             ctx.drawImage(active.cvs, 0, 0);
+
+            // Find-yourself flash: a pulsing outline on your own blob for a few seconds after the
+            // round starts, so you can spot where you dropped in and start painting. Only you see it
+            // (the seeker is on the boot screen during HIDING), so it never gives your spot away.
+            if (Date.now() < selfFlashUntil && !isDead && socket.id !== seekerSocketId) {
+                const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 90);
+                ctx.save();
+                ctx.shadowColor = 'rgba(255,235,59,0.95)'; ctx.shadowBlur = 14;
+                ctx.strokeStyle = `rgba(255,235,59,${0.55 + 0.45 * pulse})`;
+                ctx.lineWidth = 3 + pulse * 3;
+                ctx.stroke(active.path);
+                ctx.restore();
+                ctx.fillStyle = `rgba(255,235,59,${0.7 + 0.3 * pulse})`;
+                ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('▼ YOU', playerSize / 2, -8);
+            }
 
             if (gamePhase === 'REVEAL' && !isDead && socket.id !== seekerSocketId) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3; ctx.stroke(active.path);
@@ -909,8 +970,12 @@
                 ctx.strokeStyle='red'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(mX - 8, mY); ctx.lineTo(mX + 8, mY); ctx.moveTo(mX, mY - 8); ctx.lineTo(mX, mY + 8); ctx.stroke();
             }
 
-            ctx.fillStyle = 'rgba(0,0,0,0.06)';
-            for(let i=0; i<canvas.height; i+=3) ctx.fillRect(0, i, canvas.width, 1);
+            if (!scanlinePattern) {
+                const sc = document.createElement('canvas'); sc.width = 1; sc.height = 3;
+                const sx = sc.getContext('2d'); sx.fillStyle = 'rgba(0,0,0,0.06)'; sx.fillRect(0, 0, 1, 1);
+                scanlinePattern = ctx.createPattern(sc, 'repeat');
+            }
+            ctx.fillStyle = scanlinePattern; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             if (gamePhase === 'SEEKING' && socket.id === seekerSocketId) {
                 // Neutral crosshair only — NO target detection. The seeker must visually spot a
@@ -945,6 +1010,9 @@
 
             requestAnimationFrame(loop);
         }
+
+        applyColor();                 // show this player's distinct starting color on the swatch
+        layoutLobbyScoreboard();      // place standings correctly on first paint
         loop();
     </script>
 </body>
