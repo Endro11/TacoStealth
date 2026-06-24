@@ -107,7 +107,7 @@
 
     <div id="nav-desk">
         <button class="nav-btn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
-        <button class="nav-btn" onclick="triggerRagdollDeath()" style="background: #c62828;">💀 POKE</button>
+        <button class="nav-btn" id="seekerBadge" style="display:none; background:#c62828; pointer-events:none; letter-spacing:1px;">👁️ SEEKING</button>
         <button class="nav-btn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
     </div>
 
@@ -183,6 +183,7 @@
             const recLight = document.getElementById('rec-light');
             recLight.classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
             document.getElementById('scoreboard').style.display = state.phase === 'LOBBY' ? 'flex' : 'none';
+            document.getElementById('seekerBadge').style.display = (isSeeker && state.phase === 'SEEKING') ? 'inline-block' : 'none';
         });
 
         socket.on('updateScores', (scoreData) => {
@@ -207,7 +208,11 @@
         function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         window.addEventListener('resize', resize); resize();
 
-        const feeds = [ { name: "CAM 1: MAIN DINING", img: null } ];
+        const feeds = [
+            { name: "CAM 1: MAIN DINING", img: null },
+            { name: "CAM 2: LIVING ROOM", img: null },
+            { name: "CAM 3: BACKYARD", img: null }
+        ];
         let currentFeed = 0;
         
         let playerName = "NOBODY";
@@ -249,8 +254,16 @@
             toggleSettingsModal(false);
         }
 
+        let lastReactionTime = 0;
         function sendReaction(emoji) {
             if (!isJoined) return;
+            const now = Date.now();
+            if (now - lastReactionTime < 2500) return;
+            lastReactionTime = now;
+            const row = document.getElementById('react-row');
+            row.style.opacity = '0.35';
+            row.style.pointerEvents = 'none';
+            setTimeout(() => { row.style.opacity = '1'; row.style.pointerEvents = ''; }, 2500);
             socket.emit('emojiReaction', { emoji, name: playerName });
         }
 
@@ -319,25 +332,34 @@
             showBrushPreview = true; clearTimeout(brushPreviewTimeout); brushPreviewTimeout = setTimeout(() => showBrushPreview = false, 800);
         });
         document.getElementById('imageLoader').addEventListener('change', function(e) {
-            const reader = new FileReader(); reader.onload = function(ev) { const img = new Image(); img.onload = () => { feeds[currentFeed].img = img; }; img.src = ev.target.result; }
-            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+            if (!e.target.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const img = new Image();
+                img.onload = () => { feeds[currentFeed].img = img; };
+                img.src = ev.target.result;
+                socket.emit('hostMap', { feedIndex: currentFeed, dataUrl: ev.target.result });
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        socket.on('loadMap', ({ feedIndex, dataUrl }) => {
+            const img = new Image();
+            img.onload = () => { feeds[feedIndex].img = img; };
+            img.src = dataUrl;
+        });
+
+        socket.on('switchFeed', ({ feedIndex }) => {
+            currentFeed = feedIndex;
+            document.getElementById('cam-title').innerText = feeds[currentFeed].name;
+            camera = { x: 0, y: 0, scale: 1 };
         });
 
         function changeCamera(dir) {
             currentFeed = (currentFeed + dir + feeds.length) % feeds.length;
             document.getElementById('cam-title').innerText = feeds[currentFeed].name;
             camera = { x: 0, y: 0, scale: 1 };
-        }
-
-        function triggerRagdollDeath() {
-            if(isDead) { 
-                isDead = false; deadYOffset = 0; deadXOffset = 0; 
-            } else {
-                isDead = true;
-                document.getElementById('modeBtn').innerText = "💀 DEAD";
-                document.getElementById('modeBtn').style.background = "#000";
-                updateUI();
-            }
+            socket.emit('hostSwitchFeed', { feedIndex: currentFeed });
         }
 
         const playerSize = 75; 
@@ -395,7 +417,7 @@
             } 
         };
         canvas.onclick = (e) => {
-            if (isDead || isPaint || isDrop || !isJoined || gamePhase !== 'SEEKING') return;
+            if (isDead || isPaint || isDrop || !isJoined || gamePhase !== 'SEEKING' || socket.id !== seekerSocketId) return;
             const wx = (e.clientX - camera.x) / camera.scale, wy = (e.clientY - camera.y) / camera.scale;
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id) return;

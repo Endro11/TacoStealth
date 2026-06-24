@@ -10,6 +10,7 @@ app.use(express.static('public'));
 
 const players = {};
 const scores = {};
+const lastReactionTimes = {};
 let gamePhase = 'LOBBY';
 let seekerSocketId = null;
 let gameTimer = null;
@@ -29,13 +30,11 @@ function tallyScores() {
     const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
     const seeker = players[seekerSocketId];
 
-    // Surviving hiders get +1 survival
     hiders.filter(p => !p.isDead).forEach(p => {
         if (!scores[p.name]) scores[p.name] = { name: p.name, survivals: 0, catches: 0 };
         scores[p.name].survivals += 1;
     });
 
-    // Seeker gets +1 catch per dead hider
     if (seeker) {
         const catchCount = hiders.filter(p => p.isDead).length;
         if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
@@ -89,7 +88,19 @@ io.on('connection', (socket) => {
     });
 
     socket.on('emojiReaction', (data) => {
+        const now = Date.now();
+        if (lastReactionTimes[socket.id] && now - lastReactionTimes[socket.id] < 2500) return;
+        lastReactionTimes[socket.id] = now;
         io.emit('emojiReaction', { emoji: data.emoji, name: data.name });
+    });
+
+    socket.on('hostMap', ({ feedIndex, dataUrl }) => {
+        socket.broadcast.emit('loadMap', { feedIndex, dataUrl });
+        console.log(`🗺️  Map broadcast on feed ${feedIndex}`);
+    });
+
+    socket.on('hostSwitchFeed', ({ feedIndex }) => {
+        socket.broadcast.emit('switchFeed', { feedIndex });
     });
 
     socket.on('resetGame', () => {
@@ -148,9 +159,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('pokePlayer', (targetId) => {
+        if (socket.id !== seekerSocketId) return;
         if (players[targetId] && gamePhase === 'SEEKING') {
             players[targetId].isDead = true;
-            console.log(`💀 ${players[targetId].name} got poked!`);
+            console.log(`💀 ${players[targetId].name} got poked by seeker!`);
             io.emit('updatePlayers', players);
             io.to(targetId).emit('triggerPickleSlide');
             checkReveal();
@@ -164,6 +176,7 @@ io.on('connection', (socket) => {
             io.emit('updatePlayers', players);
             if (gamePhase === 'SEEKING') checkReveal();
         }
+        delete lastReactionTimes[socket.id];
     });
 });
 
