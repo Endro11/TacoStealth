@@ -14,6 +14,7 @@ const players = {};       // socket.id -> live player
 const scores = {};
 const lastReactionTimes = {};
 const feedMaps = {};      // feedIndex -> dataUrl, so late joiners receive loaded photos
+const avatars = {};       // socket.id -> painted-avatar dataUrl (the camouflage other players see)
 const playerState = {};   // token -> { isDead }; survives a refresh so reconnects restore state
 let currentFeed = 0;      // active camera, kept server-side for late joiners
 let gamePhase = 'LOBBY';
@@ -85,6 +86,9 @@ io.on('connection', (socket) => {
     });
     socket.emit('switchFeed', { feedIndex: currentFeed });
 
+    // Replay painted disguises so the seeker / latecomers see existing camouflage.
+    Object.entries(avatars).forEach(([id, avatar]) => socket.emit('playerAvatar', { id, avatar }));
+
     socket.on('joinGame', (playerData) => {
         const token = playerData.token || socket.id;
         const restored = playerState[token] || { isDead: false };
@@ -116,6 +120,14 @@ io.on('connection', (socket) => {
             players[socket.id].color = data.color;
             socket.broadcast.emit('updatePlayers', players);
         }
+    });
+
+    // The painted disguise bitmap — sent rarely (after painting / pose change), kept out of the
+    // frequent playerUpdate so position broadcasts stay tiny.
+    socket.on('avatarUpdate', ({ avatar }) => {
+        if (!players[socket.id] || typeof avatar !== 'string') return;
+        avatars[socket.id] = avatar;
+        socket.broadcast.emit('playerAvatar', { id: socket.id, avatar });
     });
 
     socket.on('emojiReaction', (data) => {
@@ -218,19 +230,26 @@ io.on('connection', (socket) => {
         }, 1000);
     });
 
-    socket.on('pokePlayer', (targetId) => {
-        if (socket.id !== seekerSocketId) return;
-        if (seekerPokesLeft <= 0) return;
-        if (players[targetId] && gamePhase === 'SEEKING') {
-            seekerPokesLeft--;
-            players[targetId].isDead = true;
-            if (players[targetId].token) playerState[players[targetId].token] = { isDead: true };
-            console.log(`💀 ${players[targetId].name} got poked! (${seekerPokesLeft} pokes left)`);
-            io.emit('updatePlayers', players);
-            io.to(targetId).emit('triggerPickleSlide');
-            broadcastGameState();
-            checkReveal();
-        }
+    socket.on('pokeAt', ({ x, y }) => {
+        if (socket.id !== seekerSocketId || gamePhase !== 'SEEKING' || seekerPokesLeft <= 0) return;
+        if (typeof x !== 'number' || typeof y !== 'number') return;
+        // Find the nearest live hider whose center is within poke range of the aimed spot.
+        const POKE_RADIUS = 55;
+        let best = null, bestDist = POKE_RADIUS;
+        Object.values(players).forEach(p => {
+            if (p.id === seekerSocketId || p.isDead) return;
+            const d = Math.hypot(x - (p.x + 37.5), y - (p.y + 37.5));   // 37.5 = playerSize/2
+            if (d < bestDist) { bestDist = d; best = p; }
+        });
+        if (!best) return;   // miss — no poke consumed, so pokes are never wasted
+        seekerPokesLeft--;
+        best.isDead = true;
+        if (best.token) playerState[best.token] = { isDead: true };
+        console.log(`💀 ${best.name} got poked! (${seekerPokesLeft} pokes left)`);
+        io.emit('updatePlayers', players);
+        io.to(best.id).emit('triggerPickleSlide');
+        broadcastGameState();
+        checkReveal();
     });
 
     socket.on('disconnect', () => {
@@ -245,6 +264,7 @@ io.on('connection', (socket) => {
         if (socket.id === seekerSocketId) seekerSocketId = null;
         if (socket.id === hostSocketId) hostSocketId = null;
         delete lastReactionTimes[socket.id];
+        delete avatars[socket.id];
         broadcastGameState();
     });
 });
