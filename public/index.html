@@ -106,7 +106,7 @@
 
     <div id="join-modal" class="modal">
         <div class="modal-title">HIDER PREP</div>
-        <div style="font-size: 0.8em; color: #aaa; text-align: center;">Pick a dumb name. Then <b>drag anywhere to move</b> (the camera follows you) and tap 🖌️ to paint a disguise.</div>
+        <div style="font-size: 0.8em; color: #aaa; text-align: center;">Pick a dumb name. Then <b>drag your blob to move</b>, drag the background to look around, pinch to zoom, and tap 🖌️ to paint a disguise.</div>
         <input type="text" id="playerNameInput" placeholder="Name..." maxlength="12">
         <button onclick="joinGame()" style="width: 100%; background: #1565c0; padding: 12px; color: white;">SPAWN IN</button>
     </div>
@@ -125,12 +125,8 @@
         </div>
         <div style="width:100%; border-top:1px solid #444; padding-top:10px;">
             <div style="font-size:0.74em; color:#9fb0c8; margin-bottom:6px; text-align:center; letter-spacing:1px;">PICK THE ROOM PHOTO</div>
-            <div style="display:flex; gap:6px;">
-                <div class="cam-load" onclick="loadSampleBg('dining','DINING ROOM')">🍔 DINING</div>
-                <div class="cam-load" onclick="loadSampleBg('drivethru','DRIVE-THRU')">🚗 DRIVE-THRU</div>
-                <div class="cam-load" onclick="loadSampleBg('kitchen','KITCHEN')">👨‍🍳 KITCHEN</div>
-            </div>
-            <label class="cam-load" style="display:block; margin-top:6px;">📷 OR LOAD YOUR OWN PHOTO<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0]); this.value='';" style="display:none;"></label>
+            <div class="cam-load" onclick="loadSampleBg('kitchen','TACO BELL')">🌮 USE PRE-MADE TACO BELL ROOM</div>
+            <label class="cam-load" style="display:block; margin-top:6px;">📷 LOAD &amp; FRAME YOUR OWN PHOTO<input type="file" accept="image/*" onchange="openFramer(this.files[0]); this.value='';" style="display:none;"></label>
         </div>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
@@ -142,6 +138,18 @@
         <canvas id="wheelCanvas" width="160" height="160"></canvas>
         <input type="range" id="brightnessSlider" min="0" max="100" value="50" style="width: 100%;">
         <button onclick="toggleColorModal(false)" style="width: 100%; background: #444; padding: 8px;">Done</button>
+    </div>
+
+    <div id="framer-modal" class="modal" style="display:none; width:300px; top:50%; transform:translate(-50%,-50%);">
+        <div class="modal-title" style="font-size:1em;">FRAME YOUR ROOM</div>
+        <div style="font-size:0.72em; color:#9fb0c8; text-align:center;">Drag to position, slide to zoom. This is what players will see.</div>
+        <canvas id="framerCvs" width="280" height="158" style="border-radius:6px; background:#000; touch-action:none; cursor:grab;"></canvas>
+        <input type="range" id="framerZoom" min="0" max="100" value="0" style="width:100%;">
+        <div style="display:flex; gap:6px; width:100%;">
+            <button onclick="rotateFramerImg()" style="background:#37474f;">↻ ROTATE</button>
+            <button onclick="useFramedPhoto()" style="background:#2e7d32;">✓ USE PHOTO</button>
+        </div>
+        <button onclick="document.getElementById('framer-modal').style.display='none';" style="width:100%; background:#555; padding:8px;">CANCEL</button>
     </div>
 
     <div id="lobby-screen">
@@ -318,9 +326,9 @@
                     player.x = SPACE_W * (0.15 + Math.random() * 0.7) - playerSize / 2;
                     player.y = SPACE_H * (0.18 + Math.random() * 0.64) - playerSize / 2;
                     clampPlayerToSpace();
-                    followPlayer(true);                   // snap the camera onto you
-                    selfFlashUntil = Date.now() + 5000;   // pulse your blob so you can find it
-                    showToast('🙈 Hide! Drag anywhere to move — 🖌️ to paint a disguise');
+                    followPlayer(true);                    // snap the camera onto you
+                    selfFlashUntil = Date.now() + 10000;   // pulse your blob ~10s so you can find it
+                    showToast('🙈 Hide! Drag your blob to move • drag bg to look • pinch to zoom • 🖌️ to paint');
                 } else if (isSeeker) {
                     focusWholeSpace();
                 }
@@ -449,11 +457,10 @@
         // shorter screen edge) but never zoom out past "whole space fits".
         function hiderViewScale() { return Math.max(fitScale(), (Math.min(canvas.width, canvas.height) * 0.16) / playerSize); }
         function followPlayer(snap) {
-            const targetScale = hiderViewScale();
-            camera.scale = snap ? targetScale : camera.scale + (targetScale - camera.scale) * 0.15;
+            if (snap) camera.scale = hiderViewScale();   // snap sets a comfortable zoom; a drag keeps the user's current zoom
             const tx = canvas.width / 2 - (player.x + playerSize / 2) * camera.scale;
             const ty = canvas.height / 2 - (player.y + playerSize / 2) * camera.scale;
-            if (snap) { camera.x = tx; camera.y = ty; } else { camera.x += (tx - camera.x) * 0.2; camera.y += (ty - camera.y) * 0.2; }
+            if (snap) { camera.x = tx; camera.y = ty; } else { camera.x += (tx - camera.x) * 0.25; camera.y += (ty - camera.y) * 0.25; }
             clampCamera();
         }
         function clampPlayerToSpace() {
@@ -633,17 +640,68 @@
             showToast('🌮 Loading the ' + name + '…');
         }
 
-        // Host loads a custom photo as the room background (host-gated on the server).
-        function loadPhotoFile(file) {
+        // ── Custom photo framing ─────────────────────────────────────────────────────────
+        // The host frames their photo (drag to pan, slide to zoom, rotate) so it looks good as the
+        // play space. The framed view is cropped out and used as the background (host-gated server-side).
+        const framer = { img: null, scale: 1, minScale: 1, ox: 0, oy: 0, drag: null };
+        function openFramer(file) {
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function (ev) {
+            reader.onload = (ev) => {
                 const img = new Image();
-                img.onload = () => { pushBackground(img, 'CUSTOM ROOM', true); showToast('📷 Room photo loaded'); };
+                img.onload = () => { framer.img = img; fitFramer(); document.getElementById('framerZoom').value = 0; document.getElementById('framer-modal').style.display = 'flex'; drawFramer(); };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
         }
+        function fitFramer() {
+            const cv = document.getElementById('framerCvs'), im = framer.img;
+            framer.scale = framer.minScale = Math.max(cv.width / im.width, cv.height / im.height);
+            framer.ox = (cv.width - im.width * framer.scale) / 2;
+            framer.oy = (cv.height - im.height * framer.scale) / 2;
+        }
+        function clampFramer() {
+            const cv = document.getElementById('framerCvs');
+            const dw = framer.img.width * framer.scale, dh = framer.img.height * framer.scale;
+            framer.ox = Math.min(0, Math.max(cv.width - dw, framer.ox));
+            framer.oy = Math.min(0, Math.max(cv.height - dh, framer.oy));
+        }
+        function drawFramer() {
+            const cv = document.getElementById('framerCvs'), g = cv.getContext('2d');
+            g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height);
+            if (framer.img) g.drawImage(framer.img, framer.ox, framer.oy, framer.img.width * framer.scale, framer.img.height * framer.scale);
+            g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 2; g.strokeRect(1, 1, cv.width - 2, cv.height - 2);
+        }
+        function rotateFramerImg() {
+            const im = framer.img; if (!im) return;
+            const c = document.createElement('canvas'); c.width = im.height; c.height = im.width;
+            const cx = c.getContext('2d'); cx.translate(c.width / 2, c.height / 2); cx.rotate(Math.PI / 2); cx.drawImage(im, -im.width / 2, -im.height / 2);
+            framer.img = c; fitFramer(); drawFramer();
+        }
+        function useFramedPhoto() {
+            if (!framer.img) return;
+            const cv = document.getElementById('framerCvs');
+            const OUT_W = 1600, OUT_H = Math.round(OUT_W * cv.height / cv.width), k = OUT_W / cv.width;
+            const out = document.createElement('canvas'); out.width = OUT_W; out.height = OUT_H;
+            const g = out.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, OUT_W, OUT_H);
+            g.drawImage(framer.img, framer.ox * k, framer.oy * k, framer.img.width * framer.scale * k, framer.img.height * framer.scale * k);
+            const dataUrl = out.toDataURL('image/jpeg', 0.85);
+            const fin = new Image(); fin.onload = () => setBackground(fin, 'CUSTOM ROOM'); fin.src = dataUrl;
+            socket.emit('hostMap', { feedIndex: 0, dataUrl, name: 'CUSTOM ROOM' });
+            document.getElementById('framer-modal').style.display = 'none';
+            showToast('📷 Room photo set');
+        }
+        // Framer pan (drag) + zoom (slider), mouse + touch.
+        (function () {
+            const cv = document.getElementById('framerCvs');
+            const pt = (e) => { const r = cv.getBoundingClientRect(); const s = (e.touches && e.touches[0]) ? e.touches[0] : e; return { x: s.clientX - r.left, y: s.clientY - r.top }; };
+            const down = (e) => { if (!framer.img) return; e.preventDefault(); const p = pt(e); framer.drag = p; };
+            const move = (e) => { if (!framer.drag) return; e.preventDefault(); const p = pt(e); framer.ox += p.x - framer.drag.x; framer.oy += p.y - framer.drag.y; framer.drag = p; clampFramer(); drawFramer(); };
+            const up = () => { framer.drag = null; };
+            cv.addEventListener('mousedown', down); window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+            cv.addEventListener('touchstart', down); cv.addEventListener('touchmove', move); cv.addEventListener('touchend', up);
+            document.getElementById('framerZoom').addEventListener('input', (e) => { framer.scale = framer.minScale * (1 + e.target.value / 33); clampFramer(); drawFramer(); });
+        })();
 
         // Receive the background from the host (or on join, catch-up). feedIndex kept for protocol
         // compatibility with the server; only one background is used.
@@ -694,8 +752,8 @@
                     + '<div class="ob-line">Wrong pokes are limited, so aim carefully. A correct catch is free!</div>';
             } else {
                 t.innerText = "🙈 YOU'RE HIDING";
-                b.innerHTML = '<div class="ob-line"><b>Drag anywhere</b> to move — the camera follows you, so you can always see yourself.</div>'
-                    + '<div class="ob-line">Tap <b>🖌️ Paint</b> to disguise your blob so it blends into the room.</div>'
+                b.innerHTML = '<div class="ob-line"><b>Drag your blob</b> to move. <b>Drag the background</b> to look around. <b>Pinch / scroll</b> to zoom.</div>'
+                    + '<div class="ob-line">Tap <b>🖌️ Paint</b>, then zoom in and paint your blob to blend into the room.</div>'
                     + '<div class="ob-line">Lost? Tap <b>📍 FIND ME</b>. Don\'t let the seeker spot you!</div>';
             }
         }
@@ -703,8 +761,8 @@
         function maybeOnboard(role) { if (!localStorage.getItem('ts_ob_' + role)) { buildOnboarding(role); document.getElementById('onboarding').style.display = 'flex'; } }
         function dismissOnboarding() { document.getElementById('onboarding').style.display = 'none'; if (obRole) localStorage.setItem('ts_ob_' + obRole, '1'); }
 
-        // Hider: recenter the camera on yourself + flash your blob. Seeker: zoom back out to the whole room.
-        function findMe() { if (isJoined && socket.id !== seekerSocketId) { selfFlashUntil = Date.now() + 3000; followPlayer(true); } }
+        // Hider: zoom in on yourself + flash for 2s. Seeker: zoom back out to the whole room.
+        function findMe() { if (isJoined && socket.id !== seekerSocketId) { focusAvatar(); selfFlashUntil = Date.now() + 2000; } }
         function zoomWhole() { if (socket.id === seekerSocketId) focusWholeSpace(); }
 
         // Per-space "no signal" (drawn in WORLD space) for before a photo is loaded.
@@ -755,8 +813,15 @@
 
         const playerSize = 75;   // avatar size in WORLD units (matches the getPath() art box)
         let dropTarget = null, mouseDown = false, mousePanning = false, panLast = {x:0, y:0};
-        let moveLast = null;     // relative drag-to-move anchor (hider)
-        let seekerDown = null;   // seeker gesture: distinguishes a tap (poke) from a drag (pan)
+        let moveLast = null;       // relative drag-to-move anchor (hider)
+        let seekerDown = null;     // seeker gesture: distinguishes a tap (poke) from a drag (pan)
+        let dragMode = null;       // hider 1-finger intent this gesture: 'blob' | 'pan' | 'paint' | 'drop'
+        let dragFollowing = false; // camera follows the blob ONLY while it's being dragged
+        // Is a screen point on (or near) the player's blob? Decides drag-blob vs pan-camera.
+        function onAvatar(sx, sy) {
+            const w = screenToWorld(sx, sy);
+            return Math.hypot(w.x - (player.x + playerSize/2), w.y - (player.y + playerSize/2)) <= playerSize * 0.9;
+        }
         function getPath(t) {
             const p = new Path2D();
             if(t==='stand'){ p.arc(37.5,18,12,0.25*Math.PI,0.75*Math.PI,true); p.lineTo(25,32); p.lineTo(12,36); p.lineTo(14,46); p.lineTo(25,46); p.lineTo(25,54); p.lineTo(20,72); p.lineTo(30,72); p.lineTo(37.5,58); p.lineTo(45,72); p.lineTo(55,72); p.lineTo(50,54); p.lineTo(50,46); p.lineTo(61,46); p.lineTo(63,36); p.lineTo(50,32); p.closePath(); }
@@ -790,42 +855,55 @@
 
         function meSeeker() { return socket.id === seekerSocketId; }
 
-        // ---- Desktop mouse controls (touch handled separately below) ----
-        // Hider: left-drag = paint / move / eyedrop depending on mode. Seeker: drag = pan, click = poke.
+        // ---- Shared hider pointer logic (mouse + touch) ----
+        // Drag the BLOB to move it (camera follows during the drag); drag the BACKGROUND to pan
+        // freely; pinch / scroll to zoom. Paint / eyedrop act on the blob.
+        function hiderDown(sx, sy) {
+            if (isDrop) { dropTarget = { x: sx, y: sy }; dragMode = 'drop'; }
+            else if (isPaint && onAvatar(sx, sy)) { paintAt(sx, sy); dragMode = 'paint'; }
+            else if (!isPaint && onAvatar(sx, sy)) { moveStart(sx, sy); dragMode = 'blob'; dragFollowing = true; }
+            else { panLast = { x: sx, y: sy }; dragMode = 'pan'; }
+        }
+        function hiderMove(sx, sy) {
+            if (dragMode === 'paint') paintAt(sx, sy);
+            else if (dragMode === 'blob') moveTo(sx, sy);
+            else if (dragMode === 'drop') dropTarget = { x: sx, y: sy };
+            else if (dragMode === 'pan') { camera.x += sx - panLast.x; camera.y += sy - panLast.y; panLast = { x: sx, y: sy }; clampCamera(); }
+        }
+        function hiderUp() {
+            if (dragMode === 'drop' && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
+            dragMode = null; dragFollowing = false; moveLast = null; paintLast = null;
+        }
+
+        // ---- Desktop mouse ----
         canvas.onmousemove = (e) => {
             if (gamePhase === 'SEEKING' && meSeeker()) { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
-            if(mousePanning) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); return; }
-            if(seekerDown && mouseDown) {   // seeker: a drag pans (a click pokes)
-                if(!seekerDown.moved && Math.hypot(e.clientX - seekerDown.x, e.clientY - seekerDown.y) > 6) seekerDown.moved = true;
-                if(seekerDown.moved) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); }
+            if (mousePanning) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); return; }
+            if (!mouseDown || isDead) return;
+            if (seekerDown) {   // seeker: a drag pans (a click pokes)
+                if (!seekerDown.moved && Math.hypot(e.clientX - seekerDown.x, e.clientY - seekerDown.y) > 6) seekerDown.moved = true;
+                if (seekerDown.moved) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); }
                 return;
             }
-            if(!mouseDown || isDead) return;
-            if(isPaint) paintAt(e.clientX, e.clientY);
-            else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
-            else if(isJoined) moveTo(e.clientX, e.clientY);
+            if (isJoined) hiderMove(e.clientX, e.clientY);
         };
         canvas.onmousedown = (e) => {
-            if((e.button === 2 || e.shiftKey) && meSeeker()) { mousePanning = true; panLast = {x:e.clientX, y:e.clientY}; return; }
-            if(e.button !== 0) return;
+            if (e.button === 2 || e.shiftKey) { mousePanning = true; panLast = {x:e.clientX, y:e.clientY}; return; }   // anyone can pan
+            if (e.button !== 0) return;
             mouseDown = true;
-            if(isDead) return;
-            if(gamePhase === 'SEEKING' && meSeeker()) { seekerDown = { x:e.clientX, y:e.clientY, moved:false }; panLast = {x:e.clientX, y:e.clientY}; seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
-            else if(isPaint) paintAt(e.clientX, e.clientY);
-            else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
-            else if(isJoined) moveStart(e.clientX, e.clientY);
+            if (isDead) return;
+            if (gamePhase === 'SEEKING' && meSeeker()) { seekerDown = { x:e.clientX, y:e.clientY, moved:false }; panLast = {x:e.clientX, y:e.clientY}; seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
+            else if (isJoined) hiderDown(e.clientX, e.clientY);
         };
         canvas.onmouseup = () => {
             mousePanning = false;
-            if(!mouseDown) return;
+            if (!mouseDown) return;
             mouseDown = false;
-            paintLast = null; moveLast = null;   // end the brush stroke / move drag
-            if(seekerDown) { if(!seekerDown.moved) seekerPoke(seekerDown.x, seekerDown.y); seekerDown = null; }   // click (no drag) = poke
-            if(isDrop && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
+            if (seekerDown) { if (!seekerDown.moved) seekerPoke(seekerDown.x, seekerDown.y); seekerDown = null; }   // click (no drag) = poke
+            else if (isJoined) hiderUp();
         };
         canvas.oncontextmenu = (e) => e.preventDefault(); // free up right-drag for panning
-        canvas.onwheel = (e) => {
-            if(!meSeeker()) return;   // only the seeker free-zooms; the hider camera follows the blob
+        canvas.onwheel = (e) => {   // scroll to zoom — everyone (hiders need it to paint detail)
             e.preventDefault();
             const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
             camera.x = e.clientX - (e.clientX - camera.x) * factor;
@@ -834,45 +912,41 @@
             clampCamera();
         };
 
-        // ---- Touch controls ----
+        // ---- Touch ----
         let isPinch = false, initialDist = 0, initialScale = 1, lastPan = {x:0, y:0};
         canvas.ontouchstart = (e) => {
-            if(e.touches.length === 2 && meSeeker()) {
-                isPinch = true; let t1=e.touches[0], t2=e.touches[1];
+            if (e.touches.length === 2) {   // pinch-zoom (everyone)
+                isPinch = true; dragMode = null; dragFollowing = false; seekerDown = null;
+                let t1=e.touches[0], t2=e.touches[1];
                 initialDist = Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY); initialScale = camera.scale;
                 lastPan = {x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2};
                 return;
             }
             const t = e.touches[0];
-            if(isDead) return;
-            if(gamePhase === 'SEEKING' && meSeeker()) { e.preventDefault(); seekerDown = { x:t.clientX, y:t.clientY, moved:false }; panLast = {x:t.clientX, y:t.clientY}; }
-            else if(isPaint) { e.preventDefault(); paintAt(t.clientX, t.clientY); }
-            else if(isDrop) { e.preventDefault(); dropTarget = {x:t.clientX, y:t.clientY}; }
-            else if(isJoined) { e.preventDefault(); moveStart(t.clientX, t.clientY); }
+            if (isDead) return;
+            if (gamePhase === 'SEEKING' && meSeeker()) { e.preventDefault(); seekerDown = { x:t.clientX, y:t.clientY, moved:false }; panLast = {x:t.clientX, y:t.clientY}; }
+            else if (isJoined) { e.preventDefault(); hiderDown(t.clientX, t.clientY); }
         };
         canvas.ontouchmove = (e) => {
-            if(isPinch && e.touches.length === 2) {
+            if (isPinch && e.touches.length === 2) {
                 let t1=e.touches[0], t2=e.touches[1], dist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY), cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2, s=initialScale*(dist/initialDist), sd=s/camera.scale;
                 camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy}; clampCamera();
                 return;
             }
             const t = e.touches[0];
-            if(isDead) return;
-            if(gamePhase === 'SEEKING' && meSeeker()) {
+            if (isDead) return;
+            if (gamePhase === 'SEEKING' && meSeeker()) {
                 e.preventDefault();
-                if(!seekerDown) return;
-                if(!seekerDown.moved && Math.hypot(t.clientX - seekerDown.x, t.clientY - seekerDown.y) > 8) seekerDown.moved = true;
-                if(seekerDown.moved) { camera.x += t.clientX - panLast.x; camera.y += t.clientY - panLast.y; panLast = {x:t.clientX, y:t.clientY}; clampCamera(); }
+                if (!seekerDown) return;
+                if (!seekerDown.moved && Math.hypot(t.clientX - seekerDown.x, t.clientY - seekerDown.y) > 8) seekerDown.moved = true;
+                if (seekerDown.moved) { camera.x += t.clientX - panLast.x; camera.y += t.clientY - panLast.y; panLast = {x:t.clientX, y:t.clientY}; clampCamera(); }
             }
-            else if(isPaint) { e.preventDefault(); paintAt(t.clientX, t.clientY); }
-            else if(isDrop) { e.preventDefault(); dropTarget = {x:t.clientX, y:t.clientY}; }
-            else if(isJoined) { e.preventDefault(); moveTo(t.clientX, t.clientY); }
+            else if (isJoined) { e.preventDefault(); hiderMove(t.clientX, t.clientY); }
         };
         canvas.ontouchend = (e) => {
-            if(isPinch && e.touches.length < 2) isPinch = false;
-            paintLast = null; moveLast = null;   // end the brush stroke / move drag
-            if(seekerDown) { if(!seekerDown.moved) seekerPoke(seekerDown.x, seekerDown.y); seekerDown = null; }   // tap (no drag) = poke
-            if(isDrop && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
+            if (isPinch) { if (e.touches.length < 2) isPinch = false; return; }
+            if (seekerDown) { if (!seekerDown.moved) seekerPoke(seekerDown.x, seekerDown.y); seekerDown = null; }   // tap (no drag) = poke
+            else if (isJoined) hiderUp();
         };
 
         let paintLast = null;   // last paint point (avatar-local coords) for smooth stroke interpolation
@@ -929,8 +1003,8 @@
         function loop() {
             if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
 
-            // Camera: the hider's view follows their blob; the seeker (and lobby/pre-join) is free.
-            if (!lobbyEditing && isJoined && !meSeeker() && (gamePhase === 'HIDING' || gamePhase === 'SEEKING')) followPlayer(false);
+            // Camera: free pan/zoom for everyone; follow the blob only WHILE it's being dragged.
+            if (dragFollowing && isJoined && !meSeeker() && gamePhase !== 'LOBBY') followPlayer(false);
 
             ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
             ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.scale, camera.scale);
@@ -954,22 +1028,19 @@
             drawGroundShadow();
             ctx.drawImage(active.cvs, 0, 0);
 
-            // Persistent self-marker so you can ALWAYS find yourself: a bright pulse for the first
-            // 5s, then a subtle ring. Only on your own screen, so it never gives your spot away.
-            if (!isDead && !meSeeker() && (gamePhase === 'HIDING' || gamePhase === 'SEEKING')) {
-                const flashing = Date.now() < selfFlashUntil;
-                const pulse = 0.5 + 0.5 * Math.sin(Date.now() / (flashing ? 90 : 400));
+            // Find-yourself flash: a bright pulse only WHILE active (first ~10s of hiding, or 2s
+            // after FIND ME), then nothing. Only on your own screen, so it never gives your spot away.
+            if (!isDead && !meSeeker() && Date.now() < selfFlashUntil) {
+                const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 90);
                 ctx.save();
-                ctx.shadowColor = 'rgba(255,235,59,0.9)'; ctx.shadowBlur = flashing ? 14 : 6;
-                ctx.strokeStyle = `rgba(255,235,59,${(flashing ? 0.55 : 0.30) + 0.4 * pulse})`;
-                ctx.lineWidth = (flashing ? 3 : 2) + pulse * 2;
+                ctx.shadowColor = 'rgba(255,235,59,0.95)'; ctx.shadowBlur = 14;
+                ctx.strokeStyle = `rgba(255,235,59,${0.55 + 0.45 * pulse})`;
+                ctx.lineWidth = 3 + pulse * 3;
                 ctx.stroke(active.path);
                 ctx.restore();
-                if (flashing) {
-                    ctx.fillStyle = `rgba(255,235,59,${0.7 + 0.3 * pulse})`;
-                    ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
-                    ctx.fillText('▼ YOU', playerSize / 2, -8);
-                }
+                ctx.fillStyle = `rgba(255,235,59,${0.7 + 0.3 * pulse})`;
+                ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('▼ YOU', playerSize / 2, -8);
             }
 
             if (gamePhase === 'REVEAL' && !isDead && !meSeeker()) {
