@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meccha Chameleon Pro</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #050508; overflow: hidden; font-family: sans-serif; overscroll-behavior: none; touch-action: none; }
+        canvas { display: block; touch-action: none; cursor: crosshair; }
+
+        #monitor-hud { position: absolute; top: 12px; left: 15px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 10; font-family: monospace; color: #fff; font-size: 1.1em; text-shadow: 2px 2px 2px #000; }
+        #rec-light { width: 14px; height: 14px; background: #ff0000; border-radius: 50%; box-shadow: 0 0 8px #ff0000; display: inline-block; opacity: 0; }
+        @keyframes pulse { 50% { opacity: 1; } }
+        .recording { animation: pulse 1s infinite; }
+
+        #nav-desk { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
+        .nav-btn { padding: 6px 12px; background: rgba(25, 25, 30, 0.9); color: white; border: 1px solid #555; border-radius: 6px; font-weight: bold; font-size: 0.8em; cursor: pointer; }
+
+        #ui-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; background: rgba(25, 25, 30, 0.95); padding: 12px 10px; border-radius: 12px; box-shadow: 0px -4px 20px rgba(0,0,0,0.8); width: 95%; max-width: 450px; z-index: 10; border: 1px solid #444; }
+        .ui-row { display: flex; gap: 8px; width: 100%; align-items: center; justify-content: center; }
+        button, .btn-custom { padding: 10px; font-weight: bold; cursor: pointer; border: none; border-radius: 6px; background: #333; color: #fff; font-size: 0.85em; flex-grow: 1; text-align: center; text-transform: uppercase; }
+        .btn-custom { background: #2e7d32; }
+        #poseBtn { background: #f9a825; color: black; }
+        
+        #colorSwatch { width: 45px; height: 35px; border: 2px solid #fff; border-radius: 6px; background: #ff0000; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); flex-shrink: 0; }
+        
+        .slider-container { display: flex; align-items: center; flex-grow: 1; gap: 8px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 6px; }
+        #brushLabel { color: #aaa; font-size: 11px; font-family: monospace; background: #111; padding: 4px; border-radius: 4px; min-width: 28px; text-align: center; }
+        #brushSize { width: 100%; margin: 0; }
+        
+        .modal { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); background: rgba(20,20,25,0.98); padding: 20px; border-radius: 12px; border: 1px solid #555; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 30; box-shadow: 0 10px 40px rgba(0,0,0,0.9); width: 280px; color: white; font-family: sans-serif; }
+        .modal-title { font-weight: bold; font-size: 1.2em; border-bottom: 2px solid #444; padding-bottom: 5px; width: 100%; text-align: center; }
+        .setting-row { display: flex; justify-content: space-between; width: 100%; align-items: center; }
+        .setting-row input { width: 60px; padding: 5px; border-radius: 4px; border: none; text-align: center; font-weight: bold; }
+        
+        #wheelCanvas { border-radius: 50%; cursor: crosshair; box-shadow: 0 0 10px #000; background: #000; }
+        
+        #playerNameInput { width: 80%; padding: 12px; font-size: 1.1em; text-align: center; border-radius: 6px; border: none; outline: none; margin: 10px 0; font-weight: bold; text-transform: uppercase; background: #ddd; }
+
+        #joystick-zone { position: absolute; bottom: 150px; left: 20px; width: 100px; height: 100px; z-index: 10; touch-action: none; display: none; }
+        #joystick-base { position: absolute; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.25); border-radius: 50%; }
+        #joystick-stick { position: absolute; top: 50%; left: 50%; width: 38px; height: 38px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="join-modal" class="modal">
+        <div class="modal-title">HIDER PREP</div>
+        <div style="font-size: 0.8em; color: #aaa; text-align: center;">Paint your avatar and pick a dumb name.</div>
+        <input type="text" id="playerNameInput" placeholder="Name..." maxlength="12">
+        <button onclick="joinGame()" style="width: 100%; background: #1565c0; padding: 12px; color: white;">SPAWN IN</button>
+    </div>
+
+    <div id="settings-modal" class="modal" style="display: none; top: 50%; transform: translate(-50%, -50%);">
+        <div class="modal-title">GAME SETTINGS</div>
+        <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
+        <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
+        <div class="setting-row"><span>Seeker Pokes:</span> <input type="number" id="pokeCount" value="5"></div>
+        <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
+    </div>
+
+    <div id="color-modal" class="modal" style="display: none; width: 180px; top: 50%; transform: translate(-50%, -50%);">
+        <div class="modal-title" style="font-size:12px;">COLOR WHEEL</div>
+        <canvas id="wheelCanvas" width="160" height="160"></canvas>
+        <input type="range" id="brightnessSlider" min="0" max="100" value="50" style="width: 100%;">
+        <button onclick="toggleColorModal(false)" style="width: 100%; background: #444; padding: 8px;">Done</button>
+    </div>
+
+    <div id="monitor-hud">
+        <span id="rec-light"></span>
+        <span id="cam-title">CAM 1: MAIN DINING</span>
+    </div>
+
+    <div id="nav-desk">
+        <button class="nav-btn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
+        <button class="nav-btn" onclick="triggerRagdollDeath()" style="background: #c62828;">💀 POKE</button>
+        <button class="nav-btn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-bar">
+        <div class="ui-row">
+            <label class="btn-custom">📷 Load Map<input type="file" id="imageLoader" accept="image/*" style="display:none;"></label>
+            <button id="poseBtn">🧍 Stand</button>
+            <button id="modeBtn">🖌️ Paint</button>
+        </div>
+        <div class="ui-row">
+            <button id="eyedropperBtn" style="flex-grow:0; width:70px; background: #1565c0;">💧 Pick</button>
+            <div id="colorSwatch" onclick="toggleColorModal(true)"></div>
+            <div class="slider-container">
+                <input type="range" id="brushSize" min="1" max="30" value="10">
+                <span id="brushLabel">10px</span>
+            </div>
+            <button id="whistleBtn" style="flex-grow:0; width:50px; background: #37474f;">🔔</button>
+        </div>
+    </div>
+    
+    <div id="joystick-zone"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
+
+    <script>
+        // Init Socket connection to Server
+        const socket = io();
+        socket.on('connect', () => { console.log('Connected to server!'); });
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+
+        const feeds = [ { name: "CAM 1: MAIN DINING", img: null } ];
+        let currentFeed = 0;
+        
+        let playerName = "NOBODY";
+        let isDead = false;
+        let deadYOffset = 0, deadXOffset = 0;
+
+        let cHue = 0, cSat = 100, cLight = 50, activeColor = `hsl(${cHue}, ${cSat}%, ${cLight}%)`;
+        let camera = { x: 0, y: 0, scale: 1 };
+        let showBrushPreview = false, brushPreviewTimeout;
+        let whistlePulseStart = 0;
+
+        let isJoined = false;
+        let isPaint = true; 
+        let isDrop = false;
+
+        function joinGame() {
+            let input = document.getElementById('playerNameInput').value.trim().toUpperCase();
+            playerName = input || "GUY " + Math.floor(Math.random()*1000);
+            document.getElementById('join-modal').style.display = 'none';
+            isJoined = true;
+            isPaint = false; 
+            updateUI();
+        }
+
+        function toggleSettingsModal(show) { document.getElementById('settings-modal').style.display = show ? 'flex' : 'none'; }
+        
+        const wheelCvs = document.getElementById('wheelCanvas'), wCtx = wheelCvs.getContext('2d'), wRadius = wheelCvs.width / 2;
+        function drawWheel() {
+            wCtx.clearRect(0,0, wheelCvs.width, wheelCvs.height);
+            for(let angle=0; angle<360; angle+=1) {
+                wCtx.beginPath(); wCtx.moveTo(wRadius, wRadius); wCtx.arc(wRadius, wRadius, wRadius, angle*Math.PI/180, (angle+1.5)*Math.PI/180);
+                let gradient = wCtx.createRadialGradient(wRadius, wRadius, 0, wRadius, wRadius, wRadius);
+                gradient.addColorStop(0, `hsl(${angle}, 0%, ${cLight}%)`); gradient.addColorStop(1, `hsl(${angle}, 100%, ${cLight}%)`);
+                wCtx.fillStyle = gradient; wCtx.fill();
+            }
+            let aRad = cHue * (Math.PI / 180), dPx = (cSat / 100) * wRadius, indX = wRadius + dPx * Math.cos(aRad), indY = wRadius + dPx * Math.sin(aRad);
+            wCtx.beginPath(); wCtx.arc(indX, indY, 6, 0, Math.PI * 2); wCtx.strokeStyle = '#000'; wCtx.lineWidth = 2; wCtx.stroke();
+            wCtx.beginPath(); wCtx.arc(indX, indY, 4, 0, Math.PI * 2); wCtx.strokeStyle = '#FFF'; wCtx.lineWidth = 1.5; wCtx.stroke();
+        }
+        function toggleColorModal(show) { document.getElementById('color-modal').style.display = show ? 'flex' : 'none'; if(show) drawWheel(); }
+        function updateColorFromMath(clientX, clientY) {
+            const rect = wheelCvs.getBoundingClientRect(), dx = (clientX - rect.left) - wRadius, dy = (clientY - rect.top) - wRadius, dist = Math.hypot(dx, dy);
+            if(dist <= wRadius) {
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI; if(angle < 0) angle += 360;
+                cHue = Math.round(angle); cSat = Math.min(100, Math.round((dist / wRadius) * 100)); applyColor(); drawWheel();
+            }
+        }
+        wheelCvs.ontouchmove = (e) => { e.preventDefault(); updateColorFromMath(e.touches[0].clientX, e.touches[0].clientY); };
+        wheelCvs.ontouchstart = (e) => { e.preventDefault(); updateColorFromMath(e.touches[0].clientX, e.touches[0].clientY); };
+        wheelCvs.onmousedown = (e) => { updateColorFromMath(e.clientX, e.clientY); };
+        wheelCvs.onmousemove = (e) => { if(e.buttons === 1) updateColorFromMath(e.clientX, e.clientY); };
+        document.getElementById('brightnessSlider').addEventListener('input', (e) => { cLight = e.target.value; applyColor(); drawWheel(); });
+        function applyColor() { activeColor = `hsl(${cHue}, ${cSat}%, ${cLight}%)`; document.getElementById('colorSwatch').style.background = activeColor; }
+
+        document.getElementById('brushSize').addEventListener('input', (e) => {
+            document.getElementById('brushLabel').innerText = e.target.value + 'px';
+            showBrushPreview = true; clearTimeout(brushPreviewTimeout); brushPreviewTimeout = setTimeout(() => showBrushPreview = false, 800);
+        });
+        document.getElementById('imageLoader').addEventListener('change', function(e) {
+            const reader = new FileReader(); reader.onload = function(ev) { const img = new Image(); img.onload = () => { feeds[currentFeed].img = img; }; img.src = ev.target.result; }
+            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        });
+
+        function changeCamera(dir) {
+            currentFeed = (currentFeed + dir + feeds.length) % feeds.length;
+            document.getElementById('cam-title').innerText = feeds[currentFeed].name;
+            camera = { x: 0, y: 0, scale: 1 };
+        }
+
+        function triggerRagdollDeath() {
+            if(isDead) { 
+                isDead = false; deadYOffset = 0; deadXOffset = 0; 
+            } else {
+                isDead = true;
+                document.getElementById('modeBtn').innerText = "💀 DEAD";
+                document.getElementById('modeBtn').style.background = "#000";
+                updateUI();
+            }
+        }
+
+        const playerSize = 75; 
+        let dropTarget = null, joyActive = false, joyV = {x:0, y:0};
+        function getPath(t) {
+            const p = new Path2D();
+            if(t==='stand'){ p.arc(37.5,18,12,0.25*Math.PI,0.75*Math.PI,true); p.lineTo(25,32); p.lineTo(12,36); p.lineTo(14,46); p.lineTo(25,46); p.lineTo(25,54); p.lineTo(20,72); p.lineTo(30,72); p.lineTo(37.5,58); p.lineTo(45,72); p.lineTo(55,72); p.lineTo(50,54); p.lineTo(50,46); p.lineTo(61,46); p.lineTo(63,36); p.lineTo(50,32); p.closePath(); }
+            else if(t==='splat'){ p.arc(37.5,18,12,0.25*Math.PI,0.75*Math.PI,true); p.lineTo(15,20); p.lineTo(10,30); p.lineTo(25,40); p.lineTo(10,65); p.lineTo(20,70); p.lineTo(37.5,55); p.lineTo(55,70); p.lineTo(65,65); p.lineTo(50,40); p.lineTo(65,30); p.lineTo(60,20); p.closePath(); }
+            return p;
+        }
+        const poses = [{path:getPath('stand'), icon:"🧍 Stand", cvs:document.createElement('canvas')}, {path:getPath('splat'), icon:"🤸 Splat", cvs:document.createElement('canvas')}];
+        poses.forEach(pose => {
+            pose.cvs.width = playerSize; pose.cvs.height = playerSize; const p = pose.cvs.getContext('2d');
+            p.fillStyle = '#666'; p.fill(pose.path); 
+            p.globalCompositeOperation = 'source-atop';
+        });
+
+        let currentIdx = 0, player = {x:window.innerWidth/2-37, y:window.innerHeight/2-37};
+
+        document.getElementById('modeBtn').onclick = () => { if(isDead) return; isPaint = !isPaint; isDrop = false; updateUI(); };
+        document.getElementById('eyedropperBtn').onclick = () => { if(isDead) return; isDrop = true; isPaint = false; updateUI(); };
+        document.getElementById('poseBtn').onclick = (e) => { if(isDead) return; currentIdx = (currentIdx+1)%poses.length; e.target.innerText = poses[currentIdx].icon; };
+        document.getElementById('whistleBtn').onclick = () => { if(!isDead) whistlePulseStart = Date.now(); };
+
+        function updateUI() {
+            if(!isDead) {
+                document.getElementById('modeBtn').innerText = isPaint ? "🖌️ Paint" : "🕹️ Move";
+                document.getElementById('modeBtn').style.background = isPaint ? "#e57373" : "#333";
+                document.getElementById('eyedropperBtn').style.background = isDrop ? "#1e88e5" : "#1565c0";
+            }
+            document.getElementById('joystick-zone').style.display = (isJoined && !isPaint && !isDrop && !isDead) ? 'block' : 'none';
+        }
+
+        let isPanning = false, initialDist = 0, initialScale = 1, lastPan = {x:0, y:0};
+        canvas.ontouchstart = (e) => {
+            if(e.touches.length === 2) { isPanning=true; let t1=e.touches[0], t2=e.touches[1]; initialDist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY); initialScale=camera.scale; lastPan={x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
+            else if(isPaint && !isDead) draw(e.touches[0].clientX, e.touches[0].clientY);
+            else if(isDrop && !isDead) dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+        };
+        canvas.ontouchmove = (e) => {
+            if(isPanning && e.touches.length === 2) {
+                let t1=e.touches[0], t2=e.touches[1], dist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY), cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2, s=Math.min(Math.max(0.5, initialScale*(dist/initialDist)), 5), sd=s/camera.scale;
+                camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy};
+            } else if(isPaint && !isDead) { e.preventDefault(); draw(e.touches[0].clientX, e.touches[0].clientY); }
+            else if(isDrop && !isDead) { e.preventDefault(); dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
+        };
+        canvas.ontouchend = () => { 
+            isPanning=false; 
+            if(isDrop && dropTarget) { 
+                const p = ctx.getImageData(dropTarget.x, dropTarget.y, 1, 1).data; 
+                let r=p[0]/255, g=p[1]/255, b=p[2]/255, max=Math.max(r,g,b), min=Math.min(r,g,b), h=0, s=0, l=(max+min)/2;
+                if(max !== min) { let d = max-min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); if(max===r) h=(g-b)/d + (g<b?6:0); else if(max===g) h=(b-r)/d + 2; else h=(r-g)/d + 4; h /= 6; }
+                cHue = Math.round(h * 360); cSat = Math.round(s * 100); cLight = Math.round(l * 100);
+                document.getElementById('brightnessSlider').value = cLight; applyColor(); isPaint=true; isDrop=false; updateUI(); 
+            } 
+        };
+        function draw(sx, sy) {
+            const wx = (sx - camera.x)/camera.scale, wy = (sy - camera.y)/camera.scale;
+            if(wx >= player.x && wx <= player.x+playerSize && wy >= player.y && wy <= player.y+playerSize) {
+                const p = poses[currentIdx].cvs.getContext('2d'); p.fillStyle = activeColor; p.beginPath(); p.arc(wx-player.x, wy-player.y, document.getElementById('brushSize').value, 0, 7); p.fill();
+            }
+        }
+
+        const jBase = document.getElementById('joystick-base'), jStick = document.getElementById('joystick-stick');
+        jBase.ontouchstart = (e) => { e.preventDefault(); joyActive=true; };
+        window.ontouchmove = (e) => {
+            if(!joyActive) return; const t = e.touches[0], r = jBase.getBoundingClientRect(); let dx = t.clientX-(r.left+50), dy = t.clientY-(r.top+50), d = Math.hypot(dx,dy);
+            if(d>30) { dx=(dx/d)*30; dy=(dy/d)*30; } jStick.style.transform=`translate(${dx}px, ${dy}px)`; joyV={x:dx/30, y:dy/30};
+        };
+        window.ontouchend = () => { joyActive=false; joyV={x:0,y:0}; jStick.style.transform='translate(0,0)'; };
+
+        function loop() {
+            if(!isPaint && !isDrop && !isDead && isJoined) { player.x+=joyV.x*4/camera.scale; player.y+=joyV.y*4/camera.scale; }
+            
+            if(isDead) { deadYOffset += 0.5; deadXOffset = Math.sin(Date.now() / 150) * 1.5; }
+
+            ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.scale, camera.scale);
+            
+            const activeMap = feeds[currentFeed].img;
+            if(activeMap) {
+                const ratio = Math.max(canvas.width / activeMap.width, canvas.height / activeMap.height);
+                const w = activeMap.width * ratio, h = activeMap.height * ratio;
+                ctx.drawImage(activeMap, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+            }
+
+            const active = poses[currentIdx], breath = isDead ? 1 : 1+Math.sin(Date.now()/1000)*0.004;
+            
+            ctx.save(); 
+            ctx.translate(player.x + playerSize/2 + deadXOffset, player.y + playerSize/2 + deadYOffset); 
+            ctx.scale(breath, breath); 
+            ctx.translate(-playerSize/2, -playerSize/2);
+            
+            ctx.filter = "blur(0.8px) drop-shadow(0px 0px 1px rgba(0,0,0,0.2))";
+            ctx.drawImage(active.cvs, 0, 0);
+            
+            ctx.save(); ctx.clip(active.path);
+            const g = ctx.createLinearGradient(0,0,75,75); g.addColorStop(0,'rgba(255,255,255,0.05)'); g.addColorStop(1,'rgba(0,0,0,0.10)'); ctx.fillStyle=g; ctx.fill(active.path);
+            
+            if(whistlePulseStart > 0 && !isDead) {
+                let elapsed = Date.now() - whistlePulseStart;
+                if(elapsed < 800) {
+                    let prog = elapsed / 800; let startX = -50 + (prog * 150);
+                    let sheen = ctx.createLinearGradient(startX, 0, startX + 30, 75);
+                    sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0.6)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = sheen; ctx.fill(active.path);
+                } else { whistlePulseStart = 0; }
+            }
+            ctx.restore();
+            
+            if(isDead) {
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.moveTo(27, 10); ctx.lineTo(35, 16); ctx.moveTo(35, 10); ctx.lineTo(27, 16); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(39, 10); ctx.lineTo(47, 16); ctx.moveTo(47, 10); ctx.lineTo(39, 16); ctx.stroke();
+                ctx.beginPath(); ctx.arc(37, 22, 5, Math.PI, 0); ctx.stroke();
+                
+                ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(-10, -20, 95, 18);
+                ctx.fillStyle = '#FFF'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+                ctx.fillText(playerName, 37.5, -7);
+            }
+            
+            ctx.restore(); ctx.restore(); 
+
+            if(showBrushPreview && !isDead) { ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/3, document.getElementById('brushSize').value*camera.scale, 0, 7); ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill(); }
+            if(isDrop && dropTarget && !isDead) {
+                const magSize = 65, mX = dropTarget.x, mY = dropTarget.y - 120;
+                ctx.save(); ctx.beginPath(); ctx.arc(mX, mY, magSize, 0, 7); ctx.clip();
+                ctx.drawImage(canvas, dropTarget.x-20, dropTarget.y-20, 40, 40, mX-magSize, mY-magSize, magSize*2, magSize*2);
+                ctx.restore(); 
+                ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(mX, mY, magSize, 0, 7); ctx.stroke();
+                ctx.strokeStyle='red'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(mX - 8, mY); ctx.lineTo(mX + 8, mY); ctx.moveTo(mX, mY - 8); ctx.lineTo(mX, mY + 8); ctx.stroke();
+            }
+
+            ctx.fillStyle = 'rgba(0,0,0,0.06)';
+            for(let i=0; i<canvas.height; i+=3) ctx.fillRect(0, i, canvas.width, 1);
+
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+</body>
+</html>
