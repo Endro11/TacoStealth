@@ -146,7 +146,7 @@
     <div id="nav-desk">
         <button class="nav-btn" id="hostBtn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
         <button class="nav-btn" id="seekerBadge" style="display:none; background:#c62828; pointer-events:none; letter-spacing:1px;">👁️ SEEKING</button>
-        <button class="nav-btn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
+        <button class="nav-btn" id="nextCamBtn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
     </div>
 
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
@@ -291,8 +291,9 @@
                 seekerReticle.x = canvas.width/2; seekerReticle.y = canvas.height/2; seekerReticle.pokeCooldownUntil = 0;
             }
 
-            const hostBtn = document.getElementById('hostBtn');
-            if (hostBtn) hostBtn.innerText = isHost ? '⚙️ HOST ✓' : '⚙️ HOST';
+            // In-room nav: only the host sees settings; only host/seeker can swap cameras.
+            document.getElementById('hostBtn').style.display = isHost ? 'inline-block' : 'none';
+            document.getElementById('nextCamBtn').style.display = (isHost || isSeeker) ? 'inline-block' : 'none';
 
             // Screen / control visibility per phase.
             document.getElementById('lobby-screen').style.display = (isJoined && inLobby) ? 'flex' : 'none';
@@ -566,6 +567,7 @@
         });
 
         function changeCamera(dir) {
+            if (!(isHost || socket.id === seekerSocketId)) return;   // only host/seeker swap feeds (no hider self-desync)
             currentFeed = (currentFeed + dir + feeds.length) % feeds.length;
             document.getElementById('cam-title').innerText = feeds[currentFeed].name;
             camera = { x: 0, y: 0, scale: 1 };
