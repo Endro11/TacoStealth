@@ -9,6 +9,7 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 const players = {};
+const scores = {};
 let gamePhase = 'LOBBY';
 let seekerSocketId = null;
 let gameTimer = null;
@@ -20,12 +21,38 @@ function broadcastGameState() {
     io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
 }
 
+function broadcastScores() {
+    io.emit('updateScores', Object.values(scores));
+}
+
+function tallyScores() {
+    const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
+    const seeker = players[seekerSocketId];
+
+    // Surviving hiders get +1 survival
+    hiders.filter(p => !p.isDead).forEach(p => {
+        if (!scores[p.name]) scores[p.name] = { name: p.name, survivals: 0, catches: 0 };
+        scores[p.name].survivals += 1;
+    });
+
+    // Seeker gets +1 catch per dead hider
+    if (seeker) {
+        const catchCount = hiders.filter(p => p.isDead).length;
+        if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
+        scores[seeker.name].catches += catchCount;
+        console.log(`📊 ${seeker.name} caught ${catchCount} hiders.`);
+    }
+
+    broadcastScores();
+}
+
 function checkReveal() {
     const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
     if (hiders.length > 0 && hiders.every(p => p.isDead)) {
         gamePhase = 'REVEAL';
         timeLeft = 0;
         clearInterval(gameTimer);
+        tallyScores();
         broadcastGameState();
         console.log('🎉 All hiders poked! REVEAL phase.');
     }
@@ -35,6 +62,7 @@ io.on('connection', (socket) => {
     console.log('🟢 New connection ID:', socket.id);
 
     socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
+    socket.emit('updateScores', Object.values(scores));
 
     socket.on('joinGame', (playerData) => {
         players[socket.id] = {
@@ -68,6 +96,7 @@ io.on('connection', (socket) => {
         Object.values(players).forEach(p => { p.isDead = false; });
         io.emit('updatePlayers', players);
         broadcastGameState();
+        broadcastScores();
         console.log('🔄 Game reset to LOBBY.');
     });
 
@@ -101,6 +130,7 @@ io.on('connection', (socket) => {
                         clearInterval(gameTimer);
                         gamePhase = 'REVEAL';
                         timeLeft = 0;
+                        tallyScores();
                         broadcastGameState();
                         console.log('🎉 REVEAL phase!');
                         return;

@@ -54,6 +54,18 @@
 
         #reveal-banner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 10px; z-index: 15; pointer-events: none; }
         #reveal-banner .reveal-title { color: #fff; font-family: monospace; font-size: 2.5em; font-weight: bold; text-shadow: 0 0 20px #fff; letter-spacing: 4px; }
+
+        #scoreboard { position: absolute; top: 50px; right: 15px; background: rgba(15,15,20,0.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; z-index: 10; display: none; flex-direction: column; gap: 6px; min-width: 230px; font-family: monospace; color: white; box-shadow: 0 4px 24px rgba(0,0,0,0.9); }
+        #scoreboard .sb-title { font-size: 0.85em; font-weight: bold; letter-spacing: 2px; color: #ffeb3b; border-bottom: 1px solid #333; padding-bottom: 6px; margin-bottom: 2px; text-align: center; }
+        #scoreboard .sb-header { display: flex; justify-content: space-between; font-size: 0.65em; color: #666; padding: 0 2px; }
+        .sb-row { display: flex; align-items: center; gap: 6px; padding: 4px 2px; border-radius: 4px; font-size: 0.82em; }
+        .sb-row:nth-child(odd) { background: rgba(255,255,255,0.03); }
+        .sb-rank { width: 18px; color: #666; font-size: 0.9em; text-align: center; flex-shrink: 0; }
+        .sb-name { flex: 1; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-stat { width: 44px; text-align: center; font-size: 0.9em; }
+        .sb-survivals { color: #81c784; }
+        .sb-catches { color: #ef9a9a; }
+        .sb-empty { color: #555; font-size: 0.8em; text-align: center; padding: 8px 0; }
     </style>
 </head>
 <body>
@@ -95,6 +107,12 @@
     </div>
 
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
+
+    <div id="scoreboard">
+        <div class="sb-title">🏆 STANDINGS</div>
+        <div class="sb-header"><span style="flex:1; padding-left:24px;">PLAYER</span><span style="width:44px; text-align:center;">🫥 HID</span><span style="width:44px; text-align:center;">👁️ GOT</span></div>
+        <div id="score-list"><div class="sb-empty">No rounds played yet.</div></div>
+    </div>
 
     <div id="seeker-overlay">
         <div class="boot-title">📷 BOOTING CAMERAS...</div>
@@ -151,6 +169,24 @@
             overlay.style.display = (state.phase === 'HIDING' && isSeeker) ? 'flex' : 'none';
             const recLight = document.getElementById('rec-light');
             recLight.classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
+            document.getElementById('scoreboard').style.display = state.phase === 'LOBBY' ? 'flex' : 'none';
+        });
+
+        socket.on('updateScores', (scoreData) => {
+            const list = document.getElementById('score-list');
+            if (!scoreData || scoreData.length === 0) {
+                list.innerHTML = '<div class="sb-empty">No rounds played yet.</div>';
+                return;
+            }
+            const sorted = [...scoreData].sort((a, b) => (b.survivals + b.catches * 2) - (a.survivals + a.catches * 2));
+            const medals = ['🥇', '🥈', '🥉'];
+            list.innerHTML = sorted.map((s, i) => `
+                <div class="sb-row">
+                    <span class="sb-rank">${medals[i] || (i + 1)}</span>
+                    <span class="sb-name">${s.name}</span>
+                    <span class="sb-stat sb-survivals">${s.survivals}</span>
+                    <span class="sb-stat sb-catches">${s.catches}</span>
+                </div>`).join('');
         });
 
         const canvas = document.getElementById('gameCanvas');
