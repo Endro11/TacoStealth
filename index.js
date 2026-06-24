@@ -4,15 +4,23 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+// maxHttpBufferSize default is 1MB — a single phone photo (as base64) blows past
+// that and silently kills the socket. Bump it so map uploads actually arrive.
+const io = new Server(server, { maxHttpBufferSize: 1e7 });
 
 app.use(express.static('public'));
 
-const players = {};
+const players = {};       // socket.id -> live player
 const scores = {};
 const lastReactionTimes = {};
+const feedMaps = {};      // feedIndex -> dataUrl, so late joiners receive loaded photos
+const playerState = {};   // token -> { isDead }; survives a refresh so reconnects restore state
+let currentFeed = 0;      // active camera, kept server-side for late joiners
 let gamePhase = 'LOBBY';
-let seekerSocketId = null;
+let seekerSocketId = null; // current socket of the seeker
+let seekerToken = null;    // identity-stable seeker (survives reconnects)
+let hostSocketId = null;   // only the host may load maps / start / reset
+let hostToken = null;
 let seekerPokesLeft = 0;
 let gameTimer = null;
 let timeLeft = 0;
@@ -20,7 +28,13 @@ let lastHideTime = 45;
 let lastSeekTime = 120;
 
 function broadcastGameState() {
-    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, pokesLeft: seekerPokesLeft });
+    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, hostSocketId, pokesLeft: seekerPokesLeft });
+}
+
+// Auto-claims host if none is set yet, so the game can never get stuck with no controller.
+function isHost(socket) {
+    if (!hostSocketId) { hostSocketId = socket.id; hostToken = (players[socket.id] && players[socket.id].token) || socket.id; }
+    return socket.id === hostSocketId;
 }
 
 function broadcastScores() {
@@ -64,18 +78,34 @@ io.on('connection', (socket) => {
     socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, pokesLeft: seekerPokesLeft });
     socket.emit('updateScores', Object.values(scores));
 
+    // Catch a late joiner up to whatever the host already loaded (fixes "NO SIGNAL"
+    // for anyone who joins after the photos were uploaded).
+    Object.entries(feedMaps).forEach(([feedIndex, dataUrl]) => {
+        socket.emit('loadMap', { feedIndex: Number(feedIndex), dataUrl });
+    });
+    socket.emit('switchFeed', { feedIndex: currentFeed });
+
     socket.on('joinGame', (playerData) => {
+        const token = playerData.token || socket.id;
+        const restored = playerState[token] || { isDead: false };
         players[socket.id] = {
             id: socket.id,
+            token,
             name: playerData.name,
             x: playerData.x,
             y: playerData.y,
             color: playerData.color,
             pose: playerData.pose,
-            isDead: false
+            isDead: restored.isDead
         };
+        playerState[token] = { isDead: restored.isDead };
+        // Re-link roles if this is the same person reconnecting after a refresh.
+        if (seekerToken === token) seekerSocketId = socket.id;
+        if (hostToken === token) hostSocketId = socket.id;
         console.log(`👤 ${playerData.name} joined Taco Stealth!`);
+        socket.emit('selfState', { isDead: players[socket.id].isDead });
         io.emit('updatePlayers', players);
+        broadcastGameState();
     });
 
     socket.on('playerUpdate', (data) => {
@@ -96,12 +126,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('hostMap', ({ feedIndex, dataUrl }) => {
+        if (!isHost(socket)) return;
+        feedMaps[feedIndex] = dataUrl;   // remember it for late joiners
         socket.broadcast.emit('loadMap', { feedIndex, dataUrl });
-        console.log(`🗺️  Map broadcast on feed ${feedIndex}`);
+        console.log(`🗺️  Map stored + broadcast on feed ${feedIndex}`);
     });
 
     socket.on('hostSwitchFeed', ({ feedIndex }) => {
+        // Host sets up cameras; during SEEKING the seeker also swaps between them.
+        if (socket.id !== hostSocketId && socket.id !== seekerSocketId) return;
+        currentFeed = feedIndex;
         socket.broadcast.emit('switchFeed', { feedIndex });
+    });
+
+    socket.on('claimHost', (token) => {
+        token = token || (players[socket.id] && players[socket.id].token) || socket.id;
+        if (!hostSocketId || hostSocketId === socket.id || hostToken === token) {
+            hostSocketId = socket.id; hostToken = token;
+            socket.emit('hostStatus', { ok: true });
+        } else {
+            socket.emit('hostStatus', { ok: false, host: (players[hostSocketId] && players[hostSocketId].name) || 'another player' });
+        }
+        broadcastGameState();
     });
 
     socket.on('volunteerSeeker', (data) => {
@@ -110,12 +156,15 @@ io.on('connection', (socket) => {
     });
 
     socket.on('resetGame', () => {
+        if (!isHost(socket)) return;
         clearInterval(gameTimer);
         gamePhase = 'LOBBY';
         timeLeft = 0;
         seekerSocketId = null;
+        seekerToken = null;
         seekerPokesLeft = 0;
         Object.values(players).forEach(p => { p.isDead = false; });
+        for (const t in playerState) delete playerState[t];
         io.emit('updatePlayers', players);
         broadcastGameState();
         broadcastScores();
@@ -123,19 +172,22 @@ io.on('connection', (socket) => {
     });
 
     socket.on('startGame', (data) => {
-        const seeker = Object.values(players).find(p => p.name === data.seekerName.toUpperCase());
+        if (!isHost(socket)) return;
+        const seeker = players[data.seekerId];   // selected by connection id, not name
         seekerSocketId = seeker ? seeker.id : null;
+        seekerToken = seeker ? seeker.token : null;
         seekerPokesLeft = data.pokeCount || 5;
         lastHideTime = data.hideTime || 45;
         lastSeekTime = data.seekTime || 120;
 
         Object.values(players).forEach(p => { p.isDead = false; });
+        for (const t in playerState) delete playerState[t];
         io.emit('updatePlayers', players);
 
         gamePhase = 'HIDING';
         timeLeft = lastHideTime;
         broadcastGameState();
-        console.log(`🙈 HIDING phase! Seeker: ${data.seekerName}, Hide: ${lastHideTime}s, Pokes: ${seekerPokesLeft}`);
+        console.log(`🙈 HIDING phase! Seeker: ${seeker ? seeker.name : 'NONE'}, Hide: ${lastHideTime}s, Pokes: ${seekerPokesLeft}`);
 
         clearInterval(gameTimer);
         gameTimer = setInterval(() => {
@@ -172,6 +224,7 @@ io.on('connection', (socket) => {
         if (players[targetId] && gamePhase === 'SEEKING') {
             seekerPokesLeft--;
             players[targetId].isDead = true;
+            if (players[targetId].token) playerState[players[targetId].token] = { isDead: true };
             console.log(`💀 ${players[targetId].name} got poked! (${seekerPokesLeft} pokes left)`);
             io.emit('updatePlayers', players);
             io.to(targetId).emit('triggerPickleSlide');
@@ -187,10 +240,17 @@ io.on('connection', (socket) => {
             io.emit('updatePlayers', players);
             if (gamePhase === 'SEEKING') checkReveal();
         }
+        // Free the role's socket but keep the token, so a refresh re-links seamlessly
+        // (and if they're gone for good, someone else can claim host).
+        if (socket.id === seekerSocketId) seekerSocketId = null;
+        if (socket.id === hostSocketId) hostSocketId = null;
         delete lastReactionTimes[socket.id];
+        broadcastGameState();
     });
 });
 
-server.listen(3000, () => {
-    console.log('🚀 Taco Stealth Traffic Cop running on port 3000');
+// Hosts (Render, Fly, Koyeb, Railway, etc.) inject the port via env — must honor it.
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`🚀 Taco Stealth running on port ${PORT}`);
 });

@@ -38,9 +38,6 @@
         
         #playerNameInput { width: 80%; padding: 12px; font-size: 1.1em; text-align: center; border-radius: 6px; border: none; outline: none; margin: 10px 0; font-weight: bold; text-transform: uppercase; background: #ddd; }
 
-        #joystick-zone { position: absolute; bottom: 150px; left: 20px; width: 100px; height: 100px; z-index: 10; touch-action: none; display: none; }
-        #joystick-base { position: absolute; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.25); border-radius: 50%; }
-        #joystick-stick { position: absolute; top: 50%; left: 50%; width: 38px; height: 38px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 
         #phase-hud { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; z-index: 10; pointer-events: none; font-family: monospace; color: #fff; font-size: 1.3em; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,255,0.4), 2px 2px 2px #000; }
         #timer-hud { font-size: 1.8em; color: #ffeb3b; text-shadow: 0 0 12px rgba(255,235,59,0.8), 2px 2px 2px #000; }
@@ -83,7 +80,7 @@
 
     <div id="join-modal" class="modal">
         <div class="modal-title">HIDER PREP</div>
-        <div style="font-size: 0.8em; color: #aaa; text-align: center;">Paint your avatar and pick a dumb name.</div>
+        <div style="font-size: 0.8em; color: #aaa; text-align: center;">Pick a dumb name. Then <b>drag your blob to move</b> and tap 🖌️ to paint a disguise.</div>
         <input type="text" id="playerNameInput" placeholder="Name..." maxlength="12">
         <button onclick="joinGame()" style="width: 100%; background: #1565c0; padding: 12px; color: white;">SPAWN IN</button>
     </div>
@@ -100,6 +97,7 @@
                 <button onclick="randomizeSeeker()" style="width:38px; padding:6px; background:#37474f; font-size:1.1em;" title="Pick random">🎲</button>
             </div>
         </div>
+        <button onclick="loadSampleRooms()" style="width: 100%; background: #00695c; padding: 10px;">🎲 USE SAMPLE ROOMS</button>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
@@ -118,7 +116,7 @@
     </div>
 
     <div id="nav-desk">
-        <button class="nav-btn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
+        <button class="nav-btn" id="hostBtn" onclick="toggleSettingsModal(true)">⚙️ HOST</button>
         <button class="nav-btn" id="seekerBadge" style="display:none; background:#c62828; pointer-events:none; letter-spacing:1px;">👁️ SEEKING</button>
         <button class="nav-btn" onclick="changeCamera(1)">NEXT CAM ➡️</button>
     </div>
@@ -170,16 +168,35 @@
         </div>
     </div>
     
-    <div id="joystick-zone"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
+    <!-- joystick removed: movement is now drag-to-move (works on mouse + touch) -->
 
     <script>
         // Init Socket connection to Server
         const socket = io();
-        socket.on('connect', () => { console.log('Connected to server!'); });
+
+        // Stable per-device id so a refresh / dropped connection rejoins as the same player.
+        const myToken = (function () {
+            let t = localStorage.getItem('ts_token');
+            if (!t) { t = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2); localStorage.setItem('ts_token', t); }
+            return t;
+        })();
+
+        socket.on('connect', () => {
+            console.log('Connected to server!');
+            // Seamless rejoin after a refresh: reuse the saved name + token.
+            const savedName = localStorage.getItem('ts_name');
+            if (savedName && !isJoined) {
+                playerName = savedName;
+                document.getElementById('join-modal').style.display = 'none';
+                isJoined = true; isPaint = false; updateUI();
+            }
+            if (isJoined) socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken });
+        });
 
         let otherPlayers = {};
         let gamePhase = 'LOBBY';
         let seekerSocketId = null;
+        let isHost = false;
 
         socket.on('updatePlayers', (players) => { otherPlayers = players; });
         socket.on('triggerPickleSlide', () => {
@@ -188,9 +205,29 @@
             document.getElementById('modeBtn').style.background = "#000";
             updateUI();
         });
+        // After a reconnect the server tells us our own state, so a dead hider stays dead.
+        socket.on('selfState', ({ isDead: dead }) => {
+            isDead = !!dead;
+            if (isDead) { document.getElementById('modeBtn').innerText = "💀 DEAD"; document.getElementById('modeBtn').style.background = "#000"; }
+            updateUI();
+        });
+        // Small toast (reuses the volunteer-toast element) for host + volunteer messages.
+        let toastTimer = null;
+        function showToast(msg) {
+            const t = document.getElementById('volunteer-toast');
+            t.innerHTML = msg; t.style.display = 'block';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+        }
+        socket.on('hostStatus', ({ ok, host }) => { if (!ok) showToast('🔒 ' + host + ' is hosting this game'); });
+        socket.on('seekerVolunteer', ({ name }) => { showToast('🙋 ' + name + ' wants to be seeker!'); });
         socket.on('gameState', (state) => {
             gamePhase = state.phase;
             seekerSocketId = state.seekerSocketId;
+            isHost = socket.id === state.hostSocketId;
+            const hostBtn = document.getElementById('hostBtn');
+            if (hostBtn) hostBtn.innerText = isHost ? '⚙️ HOST ✓' : '⚙️ HOST';
+            document.getElementById('lobby-row').style.display = (isJoined && state.phase === 'LOBBY') ? 'flex' : 'none';
             const isSeeker = socket.id === state.seekerSocketId;
             const phaseLabels = { LOBBY: '', HIDING: '🙈 HIDING', SEEKING: '👁️ SEEKING', REVEAL: '🎉 REVEAL!' };
             document.getElementById('phase-label').innerText = phaseLabels[state.phase] || '';
@@ -254,39 +291,62 @@
         function joinGame() {
             let input = document.getElementById('playerNameInput').value.trim().toUpperCase();
             playerName = input || "GUY " + Math.floor(Math.random()*1000);
+            localStorage.setItem('ts_name', playerName);   // remembered for seamless rejoin
             document.getElementById('join-modal').style.display = 'none';
             isJoined = true;
-            isPaint = false; 
+            isPaint = false;
             updateUI();
-            socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx });
+            socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken });
         }
 
         function toggleSettingsModal(show) {
             document.getElementById('settings-modal').style.display = show ? 'flex' : 'none';
             if (show) {
+                socket.emit('claimHost', myToken);   // take control (granted if nobody else holds it)
                 const sel = document.getElementById('seekerName');
-                const allNames = Object.values(otherPlayers).map(p => p.name);
-                if (isJoined && !allNames.includes(playerName)) allNames.push(playerName);
                 const prev = sel.value;
-                sel.innerHTML = '<option value="">— PICK —</option>' + allNames.map(n => `<option value="${n}">${n}</option>`).join('');
-                if (prev && allNames.includes(prev)) sel.value = prev;
+                const list = Object.values(otherPlayers);   // server includes everyone, self included
+                sel.innerHTML = '<option value="">— PICK —</option>' + list.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                if (prev && list.some(p => p.id === prev)) sel.value = prev;
             }
         }
 
         function startGame() {
-            const seekerName = document.getElementById('seekerName').value.trim().toUpperCase();
+            const seekerId = document.getElementById('seekerName').value;   // value is now a connection id
             const hideTime = parseInt(document.getElementById('hideTime').value) || 45;
             const seekTime = parseInt(document.getElementById('seekTime').value) || 120;
             const pokeCount = parseInt(document.getElementById('pokeCount').value) || 5;
-            socket.emit('startGame', { seekerName, hideTime, seekTime, pokeCount });
+            socket.emit('startGame', { seekerId, hideTime, seekTime, pokeCount });
             toggleSettingsModal(false);
         }
 
         function randomizeSeeker() {
-            const allNames = Object.values(otherPlayers).map(p => p.name);
-            if (isJoined && !allNames.includes(playerName)) allNames.push(playerName);
-            if (allNames.length === 0) return;
-            document.getElementById('seekerName').value = allNames[Math.floor(Math.random() * allNames.length)];
+            const ids = Object.values(otherPlayers).map(p => p.id);
+            if (ids.length === 0) return;
+            document.getElementById('seekerName').value = ids[Math.floor(Math.random() * ids.length)];
+        }
+
+        function sendVolunteer() {
+            if (!isJoined) return;
+            socket.emit('volunteerSeeker', { name: playerName });
+        }
+
+        // Load the three bundled sample rooms onto the three cameras (host quick-start).
+        function loadSampleRooms() {
+            [{ feed: 0, file: 'dining' }, { feed: 1, file: 'living' }, { feed: 2, file: 'backyard' }].forEach(({ feed, file }) => {
+                const img = new Image();
+                img.onload = () => {
+                    const off = document.createElement('canvas');
+                    off.width = img.width || 1280; off.height = img.height || 720;
+                    off.getContext('2d').drawImage(img, 0, 0, off.width, off.height);
+                    const dataUrl = off.toDataURL('image/jpeg', 0.85);
+                    const fin = new Image(); fin.onload = () => { feeds[feed].img = fin; }; fin.src = dataUrl;
+                    socket.emit('hostMap', { feedIndex: feed, dataUrl });
+                };
+                img.src = '/rooms/' + file + '.svg';
+            });
+            showToast('🎲 Loaded 3 sample rooms onto the cameras');
+            toggleSettingsModal(false);
         }
 
         function resetGame() {
@@ -376,9 +436,25 @@
             const reader = new FileReader();
             reader.onload = function(ev) {
                 const img = new Image();
-                img.onload = () => { feeds[currentFeed].img = img; };
+                img.onload = () => {
+                    // Downscale big photos before sending: keeps uploads small enough to
+                    // travel over the socket and keeps phones from choking on huge images.
+                    const MAX = 1600;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        const s = Math.min(MAX / w, MAX / h);
+                        w = Math.round(w * s); h = Math.round(h * s);
+                    }
+                    const off = document.createElement('canvas');
+                    off.width = w; off.height = h;
+                    off.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const dataUrl = off.toDataURL('image/jpeg', 0.82);
+                    const finalImg = new Image();
+                    finalImg.onload = () => { feeds[currentFeed].img = finalImg; };
+                    finalImg.src = dataUrl;
+                    socket.emit('hostMap', { feedIndex: currentFeed, dataUrl });
+                };
                 img.src = ev.target.result;
-                socket.emit('hostMap', { feedIndex: currentFeed, dataUrl: ev.target.result });
             };
             reader.readAsDataURL(e.target.files[0]);
         });
@@ -402,8 +478,8 @@
             socket.emit('hostSwitchFeed', { feedIndex: currentFeed });
         }
 
-        const playerSize = 75; 
-        let dropTarget = null, joyActive = false, joyV = {x:0, y:0};
+        const playerSize = 75;
+        let dropTarget = null, dragGrab = null, mouseDown = false, mousePanning = false, panLast = {x:0, y:0};
         function getPath(t) {
             const p = new Path2D();
             if(t==='stand'){ p.arc(37.5,18,12,0.25*Math.PI,0.75*Math.PI,true); p.lineTo(25,32); p.lineTo(12,36); p.lineTo(14,46); p.lineTo(25,46); p.lineTo(25,54); p.lineTo(20,72); p.lineTo(30,72); p.lineTo(37.5,58); p.lineTo(45,72); p.lineTo(55,72); p.lineTo(50,54); p.lineTo(50,46); p.lineTo(61,46); p.lineTo(63,36); p.lineTo(50,32); p.closePath(); }
@@ -426,60 +502,109 @@
 
         function updateUI() {
             if(!isDead) {
-                document.getElementById('modeBtn').innerText = isPaint ? "🖌️ Paint" : "🕹️ Move";
+                document.getElementById('modeBtn').innerText = isPaint ? "🖌️ Paint" : "✋ Move";
                 document.getElementById('modeBtn').style.background = isPaint ? "#e57373" : "#333";
                 document.getElementById('eyedropperBtn').style.background = isDrop ? "#1e88e5" : "#1565c0";
             }
-            document.getElementById('joystick-zone').style.display = (isJoined && !isPaint && !isDrop && !isDead) ? 'block' : 'none';
         }
 
         const seekerReticle = { x: 0, y: 0, lockTarget: null, lockStartTime: 0, pokeCooldownUntil: 0 };
-        canvas.onmousemove = (e) => { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; };
+
+        // ---- Desktop mouse controls (touch is handled separately below) ----
+        // Left-drag = paint / move (drag the avatar) / eyedrop depending on mode.
+        // Right-drag or Shift+drag = pan. Wheel = zoom toward cursor.
+        canvas.onmousemove = (e) => {
+            seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; // seeker aim follows the cursor
+            if(mousePanning) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; return; }
+            if(!mouseDown || isDead) return;
+            if(isPaint) paintAt(e.clientX, e.clientY);
+            else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
+            else dragAvatarTo(e.clientX, e.clientY);
+        };
+        canvas.onmousedown = (e) => {
+            if(e.button === 2 || e.shiftKey) { mousePanning = true; panLast = {x:e.clientX, y:e.clientY}; return; }
+            if(e.button !== 0) return;
+            mouseDown = true;
+            if(isDead) return;
+            if(isPaint) paintAt(e.clientX, e.clientY);
+            else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
+            else if(isJoined) grabAvatar(e.clientX, e.clientY);
+        };
+        canvas.onmouseup = () => {
+            mousePanning = false;
+            if(!mouseDown) return;
+            mouseDown = false;
+            if(isDrop && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
+            dragGrab = null;
+        };
+        canvas.oncontextmenu = (e) => e.preventDefault(); // free up right-drag for panning
+        canvas.onwheel = (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+            const ns = Math.min(Math.max(0.5, camera.scale * factor), 5), sd = ns / camera.scale;
+            camera.x = e.clientX - (e.clientX - camera.x) * sd;
+            camera.y = e.clientY - (e.clientY - camera.y) * sd;
+            camera.scale = ns;
+        };
 
         let isPanning = false, initialDist = 0, initialScale = 1, lastPan = {x:0, y:0};
         canvas.ontouchstart = (e) => {
             if(e.touches.length === 2) { isPanning=true; let t1=e.touches[0], t2=e.touches[1]; initialDist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY); initialScale=camera.scale; lastPan={x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
-            else if(isPaint && !isDead) draw(e.touches[0].clientX, e.touches[0].clientY);
+            else if(isPaint && !isDead) paintAt(e.touches[0].clientX, e.touches[0].clientY);
             else if(isDrop && !isDead) dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY};
             else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
+            else if(isJoined && !isDead) grabAvatar(e.touches[0].clientX, e.touches[0].clientY);
         };
         canvas.ontouchmove = (e) => {
             if(isPanning && e.touches.length === 2) {
                 let t1=e.touches[0], t2=e.touches[1], dist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY), cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2, s=Math.min(Math.max(0.5, initialScale*(dist/initialDist)), 5), sd=s/camera.scale;
                 camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy};
-            } else if(isPaint && !isDead) { e.preventDefault(); draw(e.touches[0].clientX, e.touches[0].clientY); }
+            } else if(isPaint && !isDead) { e.preventDefault(); paintAt(e.touches[0].clientX, e.touches[0].clientY); }
             else if(isDrop && !isDead) { e.preventDefault(); dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
             else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
+            else if(isJoined && !isDead && dragGrab) { e.preventDefault(); dragAvatarTo(e.touches[0].clientX, e.touches[0].clientY); }
         };
-        canvas.ontouchend = () => { 
-            isPanning=false; 
-            if(isDrop && dropTarget) { 
-                const p = ctx.getImageData(dropTarget.x, dropTarget.y, 1, 1).data; 
-                let r=p[0]/255, g=p[1]/255, b=p[2]/255, max=Math.max(r,g,b), min=Math.min(r,g,b), h=0, s=0, l=(max+min)/2;
-                if(max !== min) { let d = max-min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); if(max===r) h=(g-b)/d + (g<b?6:0); else if(max===g) h=(b-r)/d + 2; else h=(r-g)/d + 4; h /= 6; }
-                cHue = Math.round(h * 360); cSat = Math.round(s * 100); cLight = Math.round(l * 100);
-                document.getElementById('brightnessSlider').value = cLight; applyColor(); isPaint=true; isDrop=false; updateUI(); 
-            } 
+        canvas.ontouchend = () => {
+            isPanning = false; dragGrab = null;
+            if(isDrop && dropTarget) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
         };
 
-        function draw(sx, sy) {
-            const wx = (sx - camera.x)/camera.scale, wy = (sy - camera.y)/camera.scale;
-            if(wx >= player.x && wx <= player.x+playerSize && wy >= player.y && wy <= player.y+playerSize) {
-                const p = poses[currentIdx].cvs.getContext('2d'); p.fillStyle = activeColor; p.beginPath(); p.arc(wx-player.x, wy-player.y, document.getElementById('brushSize').value, 0, 7); p.fill();
+        // ---- Shared input helpers (used by both mouse and touch) ----
+        function screenToWorld(sx, sy) { return { x: (sx - camera.x) / camera.scale, y: (sy - camera.y) / camera.scale }; }
+
+        function paintAt(sx, sy) {
+            const w = screenToWorld(sx, sy);
+            if(w.x >= player.x && w.x <= player.x+playerSize && w.y >= player.y && w.y <= player.y+playerSize) {
+                const p = poses[currentIdx].cvs.getContext('2d');
+                p.fillStyle = activeColor; p.beginPath();
+                p.arc(w.x-player.x, w.y-player.y, document.getElementById('brushSize').value, 0, 7); p.fill();
             }
         }
 
-        const jBase = document.getElementById('joystick-base'), jStick = document.getElementById('joystick-stick');
-        jBase.ontouchstart = (e) => { e.preventDefault(); joyActive=true; };
-        window.ontouchmove = (e) => {
-            if(!joyActive) return; const t = e.touches[0], r = jBase.getBoundingClientRect(); let dx = t.clientX-(r.left+50), dy = t.clientY-(r.top+50), d = Math.hypot(dx,dy);
-            if(d>30) { dx=(dx/d)*30; dy=(dy/d)*30; } jStick.style.transform=`translate(${dx}px, ${dy}px)`; joyV={x:dx/30, y:dy/30};
-        };
-        window.ontouchend = () => { joyActive=false; joyV={x:0,y:0}; jStick.style.transform='translate(0,0)'; };
+        function pickColorAt(sx, sy) {
+            const px = ctx.getImageData(sx, sy, 1, 1).data;
+            let r=px[0]/255, g=px[1]/255, b=px[2]/255, max=Math.max(r,g,b), min=Math.min(r,g,b), h=0, s=0, l=(max+min)/2;
+            if(max !== min) { let d = max-min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); if(max===r) h=(g-b)/d + (g<b?6:0); else if(max===g) h=(b-r)/d + 2; else h=(r-g)/d + 4; h /= 6; }
+            cHue = Math.round(h * 360); cSat = Math.round(s * 100); cLight = Math.round(l * 100);
+            document.getElementById('brightnessSlider').value = cLight; applyColor();
+        }
+
+        // Drag-to-move: press on (or near) the avatar to grab it, then it follows the
+        // pointer offset-locked until release. Replaces the old touch-only joystick.
+        function grabAvatar(sx, sy) {
+            const w = screenToWorld(sx, sy);
+            const cx = player.x + playerSize/2, cy = player.y + playerSize/2;
+            if(Math.hypot(w.x - cx, w.y - cy) <= playerSize * 0.85) { dragGrab = { dx: w.x - player.x, dy: w.y - player.y }; return true; }
+            return false;
+        }
+        function dragAvatarTo(sx, sy) {
+            if(!dragGrab) return;
+            const w = screenToWorld(sx, sy);
+            player.x = w.x - dragGrab.dx; player.y = w.y - dragGrab.dy;
+        }
 
         function loop() {
-            if(!isPaint && !isDrop && !isDead && isJoined) { player.x+=joyV.x*4/camera.scale; player.y+=joyV.y*4/camera.scale; }
-            
             if(isDead) { deadYOffset += 0.5; deadXOffset = Math.sin(Date.now() / 150) * 1.5; }
 
             if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }

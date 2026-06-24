@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <!-- Backyard -->
+  <rect width="1280" height="720" fill="#9fd3f0"/>
+  <circle cx="1080" cy="140" r="70" fill="#ffe27a"/>
+  <!-- clouds -->
+  <ellipse cx="300" cy="120" rx="90" ry="40" fill="#ffffff"/>
+  <ellipse cx="380" cy="130" rx="70" ry="34" fill="#ffffff"/>
+  <ellipse cx="720" cy="90" rx="80" ry="36" fill="#f4fbff"/>
+  <!-- grass -->
+  <rect y="440" width="1280" height="280" fill="#5fae4e"/>
+  <rect y="440" width="1280" height="16" fill="#4f9a40"/>
+  <!-- fence -->
+  <rect y="380" width="1280" height="70" fill="#caa472"/>
+  <g fill="#b8915f">
+    <rect x="20" y="350" width="44" height="100"/><rect x="120" y="350" width="44" height="100"/>
+    <rect x="220" y="350" width="44" height="100"/><rect x="320" y="350" width="44" height="100"/>
+    <rect x="420" y="350" width="44" height="100"/><rect x="520" y="350" width="44" height="100"/>
+    <rect x="620" y="350" width="44" height="100"/><rect x="720" y="350" width="44" height="100"/>
+    <rect x="820" y="350" width="44" height="100"/><rect x="920" y="350" width="44" height="100"/>
+    <rect x="1020" y="350" width="44" height="100"/><rect x="1120" y="350" width="44" height="100"/>
+    <rect x="1220" y="350" width="44" height="100"/>
+  </g>
+  <!-- tree -->
+  <rect x="170" y="300" width="60" height="200" fill="#7a5230"/>
+  <circle cx="200" cy="250" r="120" fill="#3f8a3a"/>
+  <circle cx="290" cy="290" r="80" fill="#4a9a44"/>
+  <circle cx="120" cy="300" r="80" fill="#4a9a44"/>
+  <!-- bushes -->
+  <ellipse cx="900" cy="470" rx="120" ry="60" fill="#4a9a44"/>
+  <ellipse cx="1010" cy="480" rx="90" ry="48" fill="#3f8a3a"/>
+  <!-- beach ball -->
+  <circle cx="560" cy="600" r="55" fill="#ffffff"/>
+  <path d="M560 545 A55 55 0 0 1 615 600 L560 600 Z" fill="#e0584b"/>
+  <path d="M560 655 A55 55 0 0 1 505 600 L560 600 Z" fill="#3f6ea5"/>
+  <path d="M560 545 A55 55 0 0 0 505 600 L560 600 Z" fill="#f0c244"/>
+  <!-- flower patch -->
+  <g>
+    <circle cx="760" cy="640" r="14" fill="#e85d75"/><circle cx="800" cy="660" r="14" fill="#f0c244"/>
+    <circle cx="720" cy="665" r="14" fill="#9b6fd1"/>
+  </g>
+</svg>

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <!-- Living room -->
+  <rect width="1280" height="720" fill="#dfe6ea"/>
+  <rect y="500" width="1280" height="220" fill="#c9a979"/>
+  <rect y="500" width="1280" height="12" fill="#a8895d"/>
+  <!-- rug -->
+  <ellipse cx="560" cy="640" rx="430" ry="70" fill="#b5524b"/>
+  <ellipse cx="560" cy="640" rx="360" ry="52" fill="#cf6a5f"/>
+  <!-- shelf -->
+  <rect x="60" y="180" width="240" height="300" fill="#7c5a3a"/>
+  <rect x="74" y="210" width="212" height="10" fill="#5e4327"/>
+  <rect x="74" y="300" width="212" height="10" fill="#5e4327"/>
+  <rect x="74" y="390" width="212" height="10" fill="#5e4327"/>
+  <rect x="90" y="230" width="22" height="64" fill="#3f6ea5"/>
+  <rect x="118" y="230" width="22" height="64" fill="#c8533f"/>
+  <rect x="146" y="240" width="22" height="54" fill="#4a8d54"/>
+  <rect x="100" y="320" width="120" height="64" fill="#d6b24b"/>
+  <!-- window -->
+  <rect x="940" y="150" width="280" height="220" fill="#9ad0ee"/>
+  <rect x="930" y="140" width="300" height="240" fill="none" stroke="#5a4632" stroke-width="14"/>
+  <line x1="1080" y1="150" x2="1080" y2="370" stroke="#5a4632" stroke-width="10"/>
+  <!-- couch -->
+  <rect x="360" y="430" width="520" height="150" rx="26" fill="#4f7a8c"/>
+  <rect x="360" y="400" width="520" height="80" rx="24" fill="#5d8a9c"/>
+  <rect x="390" y="450" width="200" height="90" rx="16" fill="#6fa0b2"/>
+  <rect x="650" y="450" width="200" height="90" rx="16" fill="#6fa0b2"/>
+  <rect x="340" y="450" width="60" height="140" rx="18" fill="#456b7b"/>
+  <rect x="840" y="450" width="60" height="140" rx="18" fill="#456b7b"/>
+  <!-- floor lamp -->
+  <rect x="1130" y="430" width="14" height="180" fill="#444"/>
+  <path d="M1090 430 L1184 430 L1160 360 L1114 360 Z" fill="#f1d98a"/>
+  <!-- TV -->
+  <rect x="980" y="430" width="220" height="20" fill="#333"/>
+</svg>
