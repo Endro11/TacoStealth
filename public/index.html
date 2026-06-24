@@ -142,12 +142,13 @@
 
     <div id="framer-modal" class="modal" style="display:none; width:300px; top:50%; transform:translate(-50%,-50%);">
         <div class="modal-title" style="font-size:1em;">FRAME YOUR ROOM</div>
-        <div style="font-size:0.72em; color:#9fb0c8; text-align:center;">Drag to position, slide to zoom. This is what players will see.</div>
+        <div style="font-size:0.72em; color:#9fb0c8; text-align:center;">Drag to position, slide to zoom for a crop — or use the FULL photo as-is (portrait is fine now).</div>
         <canvas id="framerCvs" width="280" height="158" style="border-radius:6px; background:#000; touch-action:none; cursor:grab;"></canvas>
         <input type="range" id="framerZoom" min="0" max="100" value="0" style="width:100%;">
         <div style="display:flex; gap:6px; width:100%;">
-            <button onclick="rotateFramerImg()" style="background:#37474f;">↻ ROTATE</button>
-            <button onclick="useFramedPhoto()" style="background:#2e7d32;">✓ USE PHOTO</button>
+            <button onclick="rotateFramerImg()" style="background:#37474f; flex:0 0 46px;">↻</button>
+            <button onclick="useFramedPhoto()" style="background:#37474f;">✂️ CROP</button>
+            <button onclick="useFullPhoto()" style="background:#2e7d32;">🖼️ FULL</button>
         </div>
         <button onclick="document.getElementById('framer-modal').style.display='none';" style="width:100%; background:#555; padding:8px;">CANCEL</button>
     </div>
@@ -689,7 +690,15 @@
             const fin = new Image(); fin.onload = () => setBackground(fin, 'CUSTOM ROOM'); fin.src = dataUrl;
             socket.emit('hostMap', { feedIndex: 0, dataUrl, name: 'CUSTOM ROOM' });
             document.getElementById('framer-modal').style.display = 'none';
-            showToast('📷 Room photo set');
+            showToast('📷 Room photo set (cropped)');
+        }
+        // Use the whole photo at its native aspect — the space adapts, and with free pan/zoom a tall
+        // portrait room plays fine, so cropping is optional.
+        function useFullPhoto() {
+            if (!framer.img) return;
+            pushBackground(framer.img, 'CUSTOM ROOM', true);
+            document.getElementById('framer-modal').style.display = 'none';
+            showToast('🖼️ Room photo set (full)');
         }
         // Framer pan (drag) + zoom (slider), mouse + touch.
         (function () {
@@ -993,13 +1002,6 @@
             return { x: wob, y: ease * 48, rot: ease * 0.5 };
         }
 
-        // Soft ground shadow under a blob (call inside the avatar's local transform) for depth.
-        function drawGroundShadow() {
-            ctx.save(); ctx.globalAlpha = 0.28; ctx.fillStyle = '#000';
-            ctx.beginPath(); ctx.ellipse(playerSize/2, playerSize - 6, playerSize*0.34, playerSize*0.12, 0, 0, 7); ctx.fill();
-            ctx.restore();
-        }
-
         function loop() {
             if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
 
@@ -1025,7 +1027,6 @@
             ctx.scale(breath, breath);
             ctx.translate(-playerSize/2, -playerSize/2);
 
-            drawGroundShadow();
             ctx.drawImage(active.cvs, 0, 0);
 
             // Find-yourself flash: a bright pulse only WHILE active (first ~10s of hiding, or 2s
@@ -1091,7 +1092,6 @@
                 ctx.translate(px + playerSize/2 + slide.x, py + playerSize/2 + slide.y);
                 ctx.rotate(slide.rot);
                 ctx.translate(-playerSize/2, -playerSize/2);
-                drawGroundShadow();
                 const av = otherAvatars[op.id];
                 if (av) ctx.drawImage(av, 0, 0);            // their real painted disguise
                 else { ctx.fillStyle = op.color || '#888'; ctx.fill(opPose.path); }   // fallback until it arrives
