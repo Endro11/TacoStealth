@@ -104,6 +104,11 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('switchFeed', { feedIndex });
     });
 
+    socket.on('volunteerSeeker', (data) => {
+        io.emit('seekerVolunteer', { name: data.name });
+        console.log(`🙋 ${data.name} volunteered as seeker`);
+    });
+
     socket.on('resetGame', () => {
         clearInterval(gameTimer);
         gamePhase = 'LOBBY';

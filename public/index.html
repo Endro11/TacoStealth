@@ -59,6 +59,12 @@
         .eb-name { font-size: 0.28em; color: #fff; font-family: monospace; background: rgba(0,0,0,0.75); padding: 2px 6px; border-radius: 3px; white-space: nowrap; margin-top: 2px; letter-spacing: 1px; }
         @keyframes eb-float { 0% { opacity:1; transform:translateY(0) scale(1); } 25% { transform:translateY(-30px) scale(1.25); } 80% { opacity:1; } 100% { opacity:0; transform:translateY(-220px) scale(0.7); } }
         #react-row button { padding: 7px 4px; font-size: 1.25em; flex-grow: 1; background: rgba(255,255,255,0.07); border: 1px solid #333; }
+        #lobby-row { display: none; }
+        #lobby-row button { background: #1565c0; letter-spacing: 1px; font-size: 0.85em; }
+        #volunteer-toast { display: none; position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(21,101,192,0.96); color: #fff; font-family: monospace; padding: 10px 22px; border-radius: 8px; font-size: 0.9em; text-align: center; pointer-events: none; border: 1px solid #5090ff; white-space: nowrap; animation: toast-in 0.25s ease-out; }
+        @keyframes toast-in { from { opacity:0; transform:translateX(-50%) translateY(-8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        #score-list { max-height: 52vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 transparent; }
+        #player-count { font-size: 0.7em; color: #888; font-family: monospace; margin-left: 4px; }
 
         #scoreboard { position: absolute; top: 50px; right: 15px; background: rgba(15,15,20,0.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; z-index: 10; display: none; flex-direction: column; gap: 6px; min-width: 230px; font-family: monospace; color: white; box-shadow: 0 4px 24px rgba(0,0,0,0.9); }
         #scoreboard .sb-title { font-size: 0.85em; font-weight: bold; letter-spacing: 2px; color: #ffeb3b; border-bottom: 1px solid #333; padding-bottom: 6px; margin-bottom: 2px; text-align: center; }
@@ -90,7 +96,7 @@
         <div class="setting-row">
             <span>Seeker:</span>
             <div style="display:flex; gap:6px; align-items:center;">
-                <input type="text" id="seekerName" placeholder="NAME" maxlength="12" style="width:70px; text-transform:uppercase; font-weight:bold; padding:5px;">
+                <select id="seekerName" style="background:#222; color:#fff; border:1px solid #555; border-radius:4px; padding:5px 4px; font-weight:bold; font-size:0.85em; max-width:110px;"><option value="">— PICK —</option></select>
                 <button onclick="randomizeSeeker()" style="width:38px; padding:6px; background:#37474f; font-size:1.1em;" title="Pick random">🎲</button>
             </div>
         </div>
@@ -120,8 +126,10 @@
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
     <div id="poke-counter" style="display:none; position:absolute; top:50px; left:15px; z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">💀 POKES: <span id="poke-count">5</span></div>
 
+    <div id="volunteer-toast">🙋 <span id="volunteer-name">PLAYER</span> wants to be seeker!</div>
+
     <div id="scoreboard">
-        <div class="sb-title">🏆 STANDINGS</div>
+        <div class="sb-title">🏆 STANDINGS <span id="player-count"></span></div>
         <div class="sb-header"><span style="flex:1; padding-left:24px;">PLAYER</span><span style="width:44px; text-align:center;">🫥 HID</span><span style="width:44px; text-align:center;">👁️ GOT</span></div>
         <div id="score-list"><div class="sb-empty">No rounds played yet.</div></div>
     </div>
@@ -148,6 +156,9 @@
                 <span id="brushLabel">10px</span>
             </div>
             <button id="whistleBtn" style="flex-grow:0; width:50px; background: #37474f;">🔔</button>
+        </div>
+        <div class="ui-row" id="lobby-row">
+            <button onclick="sendVolunteer()">🙋 VOLUNTEER AS SEEKER</button>
         </div>
         <div class="ui-row" id="react-row">
             <button onclick="sendReaction('👀')">👀</button>
@@ -250,7 +261,17 @@
             socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx });
         }
 
-        function toggleSettingsModal(show) { document.getElementById('settings-modal').style.display = show ? 'flex' : 'none'; }
+        function toggleSettingsModal(show) {
+            document.getElementById('settings-modal').style.display = show ? 'flex' : 'none';
+            if (show) {
+                const sel = document.getElementById('seekerName');
+                const allNames = Object.values(otherPlayers).map(p => p.name);
+                if (isJoined && !allNames.includes(playerName)) allNames.push(playerName);
+                const prev = sel.value;
+                sel.innerHTML = '<option value="">— PICK —</option>' + allNames.map(n => `<option value="${n}">${n}</option>`).join('');
+                if (prev && allNames.includes(prev)) sel.value = prev;
+            }
+        }
 
         function startGame() {
             const seekerName = document.getElementById('seekerName').value.trim().toUpperCase();
