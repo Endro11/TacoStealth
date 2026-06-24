@@ -22,6 +22,7 @@ let seekerToken = null;    // identity-stable seeker (survives reconnects)
 let hostSocketId = null;   // only the host may load maps / start / reset
 let hostToken = null;
 let seekerPokesLeft = 0;
+let sceneCount = 3;        // number of rooms/photos in the shared world (host-configurable)
 let gameTimer = null;
 let revealTimer = null;
 let timeLeft = 0;
@@ -29,7 +30,7 @@ let lastHideTime = 45;
 let lastSeekTime = 120;
 
 function broadcastGameState() {
-    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, hostSocketId, pokesLeft: seekerPokesLeft });
+    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, hostSocketId, pokesLeft: seekerPokesLeft, sceneCount });
 }
 
 // Auto-claims host if none is set yet, so the game can never get stuck with no controller.
@@ -95,7 +96,7 @@ function checkReveal() {
 io.on('connection', (socket) => {
     console.log('🟢 New connection ID:', socket.id);
 
-    socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, pokesLeft: seekerPokesLeft });
+    socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, hostSocketId, pokesLeft: seekerPokesLeft, sceneCount });
     socket.emit('updateScores', Object.values(scores));
 
     // Catch a late joiner up to whatever the host already loaded (fixes "NO SIGNAL"
@@ -114,13 +115,13 @@ io.on('connection', (socket) => {
             id: socket.id,
             token,
             name: playerData.name,
-            // Positions are stored normalized (0..1 of the background image), so every
-            // device renders the hider at the same spot on the scene regardless of screen size.
-            nx: typeof playerData.nx === 'number' ? playerData.nx : 0.5,
-            ny: typeof playerData.ny === 'number' ? playerData.ny : 0.5,
+            // Positions are world coordinates in the shared stacked world (fixed virtual units,
+            // SCENE_W=1000 wide), so every device renders the hider at the same spot — and a player
+            // has exactly ONE position, so they can never appear in more than one room.
+            x: typeof playerData.x === 'number' ? playerData.x : 500,
+            y: typeof playerData.y === 'number' ? playerData.y : 279,
             color: playerData.color,
             pose: playerData.pose,
-            feed: playerData.feed || 0,   // which room this hider is hiding in
             isDead: restored.isDead
         };
         playerState[token] = { isDead: restored.isDead };
@@ -135,13 +136,21 @@ io.on('connection', (socket) => {
 
     socket.on('playerUpdate', (data) => {
         if (players[socket.id]) {
-            if (typeof data.nx === 'number') players[socket.id].nx = data.nx;
-            if (typeof data.ny === 'number') players[socket.id].ny = data.ny;
+            if (typeof data.x === 'number') players[socket.id].x = data.x;
+            if (typeof data.y === 'number') players[socket.id].y = data.y;
             players[socket.id].pose = data.pose;
             players[socket.id].color = data.color;
-            if (typeof data.feed === 'number') players[socket.id].feed = data.feed;
             socket.broadcast.emit('updatePlayers', players);
         }
+    });
+
+    // Host sets how many rooms/photos exist in the shared world; everyone rebuilds to match.
+    socket.on('setSceneCount', (n) => {
+        if (!isHost(socket)) return;
+        n = Math.max(1, Math.min(6, parseInt(n) || 3));
+        sceneCount = n;
+        broadcastGameState();
+        console.log(`🏠 Rooms set to ${sceneCount}`);
     });
 
     // The painted disguise bitmap — sent rarely (after painting / pose change), kept out of the
@@ -242,13 +251,13 @@ io.on('connection', (socket) => {
         }, 1000);
     });
 
-    socket.on('pokeAt', ({ targetId, feed }) => {
+    socket.on('pokeAt', ({ targetId }) => {
         if (socket.id !== seekerSocketId || gamePhase !== 'SEEKING') return;
         // The seeker hit-tests locally against where it drew the hider and passes the target id
         // (or null). Poke economy is INVERTED: a correct catch is free + scores a point; only a
         // WRONG poke (nobody there) spends one of the seeker's limited pokes.
         const best = (targetId && players[targetId]) ? players[targetId] : null;
-        const validHit = best && best.id !== seekerSocketId && !best.isDead && (best.feed || 0) === feed;
+        const validHit = best && best.id !== seekerSocketId && !best.isDead;
 
         if (validHit) {
             best.isDead = true;

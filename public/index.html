@@ -34,7 +34,7 @@
         
         .modal { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); background: rgba(20,20,25,0.98); padding: 20px; border-radius: 12px; border: 1px solid #555; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 30; box-shadow: 0 10px 40px rgba(0,0,0,0.9); width: 280px; max-height: 90vh; overflow-y: auto; color: white; font-family: sans-serif; }
         /* Standings mounted inside the name card flow naturally below the input (no overlap). */
-        #scoreboard.in-entry { position: static; top: auto; right: auto; bottom: auto; left: auto; transform: none; min-width: 0; width: 100%; box-shadow: none; margin: 4px 0 0; background: rgba(0,0,0,0.25); }
+        #scoreboard.in-entry { position: static; top: auto; right: auto; bottom: auto; left: auto; transform: none; min-width: 0; width: 100%; max-width: 360px; box-shadow: none; margin: 10px auto 0; background: rgba(0,0,0,0.25); }
         #scoreboard.in-entry #score-list { max-height: 26vh; }
         .modal-title { font-weight: bold; font-size: 1.2em; border-bottom: 2px solid #444; padding-bottom: 5px; width: 100%; text-align: center; }
         .setting-row { display: flex; justify-content: space-between; width: 100%; align-items: center; }
@@ -84,8 +84,9 @@
         #pokeBtn { display:none; position:absolute; bottom:calc(26px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:16; padding:16px 46px; font-size:1.35em; font-weight:bold; letter-spacing:2px; color:#fff; background:#c62828; border:none; border-radius:40px; box-shadow:0 6px 22px rgba(0,0,0,0.6); text-transform:uppercase; cursor:pointer; }
         #pokeBtn:active { transform:translateX(-50%) scale(0.94); }
         #pokeBtn:disabled { background:#666; opacity:0.55; }
+        #lobbyDoneBtn { display:none; position:absolute; top:calc(12px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%); z-index:17; padding:12px 30px; font-size:1em; font-weight:bold; letter-spacing:1px; color:#fff; background:#2e7d32; border:none; border-radius:30px; box-shadow:0 4px 16px rgba(0,0,0,0.5); text-transform:uppercase; cursor:pointer; }
 
-        #lobby-screen { display:none; position:absolute; top:0; left:0; width:100%; height:100%; z-index:18; background:radial-gradient(circle at 50% 28%, #1b1f2e, #050508 70%); flex-direction:column; align-items:center; justify-content:flex-start; gap:12px; padding-top:7vh; box-sizing:border-box; color:#fff; font-family:sans-serif; }
+        #lobby-screen { display:none; position:absolute; top:0; left:0; width:100%; height:100%; z-index:18; background:radial-gradient(circle at 50% 28%, #1b1f2e, #050508 70%); flex-direction:column; align-items:center; justify-content:flex-start; gap:12px; padding:7vh 12px 16px; box-sizing:border-box; color:#fff; font-family:sans-serif; overflow-y:auto; }
         #lobby-screen .lobby-logo { font-size:2.4em; font-weight:bold; letter-spacing:3px; color:#ffeb3b; text-shadow:0 0 18px rgba(255,235,59,0.4); }
         #lobby-screen .lobby-tag { font-family:monospace; color:#7fa7d8; letter-spacing:5px; font-size:0.85em; margin-top:-6px; }
         #lobby-count { font-family:monospace; color:#9fb0c8; font-size:0.85em; }
@@ -112,6 +113,7 @@
         <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
         <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
         <div class="setting-row"><span>Wrong pokes allowed:</span> <input type="number" id="pokeCount" value="5"></div>
+        <div class="setting-row"><span>Number of rooms:</span> <input type="number" id="roomCount" value="3" min="1" max="6" onchange="changeRoomCount(this.value)"></div>
         <div class="setting-row">
             <span>Seeker:</span>
             <div style="display:flex; gap:6px; align-items:center;">
@@ -122,11 +124,7 @@
         <button id="sampleBtn" onclick="loadSampleRooms()" style="width: 100%; background: #00695c; padding: 10px;">🌮 USE TACO BELL SCENES</button>
         <div style="width:100%; border-top:1px solid #444; padding-top:10px;">
             <div style="font-size:0.74em; color:#9fb0c8; margin-bottom:6px; text-align:center; letter-spacing:1px;">OR LOAD YOUR OWN PHOTOS</div>
-            <div style="display:flex; gap:6px;">
-                <label class="cam-load">📷 Dining<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],0); this.value='';" style="display:none;"></label>
-                <label class="cam-load">📷 Drive-Thru<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],1); this.value='';" style="display:none;"></label>
-                <label class="cam-load">📷 Kitchen<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],2); this.value='';" style="display:none;"></label>
-            </div>
+            <div id="cam-loaders" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
         </div>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
@@ -146,6 +144,7 @@
         <div id="lobby-count"></div>
         <div id="lobby-players"></div>
         <div id="lobby-controls">
+            <button id="lobby-edit" onclick="toggleLobbyEdit(true)" style="background:#6a1b9a;">🖌️ EDIT YOUR DISGUISE</button>
             <button id="lobby-settings" onclick="toggleSettingsModal(true)">⚙️ HOST SETTINGS / START</button>
             <div id="lobby-wait">Waiting for the host to start the round…</div>
             <button id="lobby-volunteer" onclick="sendVolunteer()">🙋 VOLUNTEER AS SEEKER</button>
@@ -183,6 +182,7 @@
     <canvas id="gameCanvas"></canvas>
 
     <button id="pokeBtn" onclick="seekerPoke()">👉 POKE</button>
+    <button id="lobbyDoneBtn" onclick="toggleLobbyEdit(false)">✓ DONE EDITING</button>
 
     <div id="ui-bar">
         <div class="ui-row">
@@ -233,13 +233,14 @@
                 document.getElementById('join-modal').style.display = 'none';
                 isJoined = true; isPaint = false; updateUI();
             }
-            if (isJoined) { const n = selfNorm(); socket.emit('joinGame', { name: playerName, nx: n.nx, ny: n.ny, color: activeColor, pose: currentIdx, token: myToken, feed: myFeed }); scheduleAvatarSync(); }
+            if (isJoined) { socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken }); scheduleAvatarSync(); }
         });
 
         let otherPlayers = {};
         let gamePhase = 'LOBBY';
         let seekerSocketId = null;
         let isHost = false, hostId = null;
+        let isJoined = false, isPaint = true, isDrop = false, lobbyEditing = false;
 
         socket.on('updatePlayers', (players) => {
             otherPlayers = players;
@@ -295,46 +296,38 @@
             seekerSocketId = state.seekerSocketId;
             hostId = state.hostSocketId;
             isHost = socket.id === state.hostSocketId;
+            if (typeof state.sceneCount === 'number' && state.sceneCount !== NUM_SCENES) rebuildScenes(state.sceneCount);
             const isSeeker = socket.id === state.seekerSocketId;
             const inLobby = state.phase === 'LOBBY';
             const inRoom = !inLobby;   // HIDING / SEEKING / REVEAL
 
-            // Synchronized load-in: when HIDING starts, hiders drop into the room spread out; reset the view.
+            // When HIDING starts, each hider drops into a random room and the camera focuses there.
             if (prevPhase !== 'HIDING' && state.phase === 'HIDING') {
-                camera = { x: 0, y: 0, scale: 1 };
+                lobbyEditing = false;
                 if (isJoined && !isSeeker) {
-                    // Drop into a random room that actually has a photo (hider can switch with NEXT CAM).
-                    const rooms = feeds.map((f, i) => f.img ? i : -1).filter(i => i >= 0);
-                    myFeed = rooms.length ? rooms[Math.floor(Math.random() * rooms.length)] : 0;
-                    currentFeed = myFeed;
-                    // Spawn within the central part of the actual scene photo (not raw screen px),
-                    // so hiders start spread out over the room on every device.
-                    const r = imageRect(myFeed);
-                    player.x = r.x + r.w * (0.5 + (Math.random()*2-1) * 0.30) - playerSize/2;
-                    player.y = r.y + r.h * (0.5 + (Math.random()*2-1) * 0.28) - playerSize/2;
+                    const avail = scenes.map((s, i) => s.img ? i : -1).filter(i => i >= 0);
+                    myScene = avail.length ? avail[Math.floor(Math.random() * avail.length)] : Math.floor(Math.random() * NUM_SCENES);
+                    player.x = SCENE_W * (0.2 + Math.random() * 0.6) - playerSize / 2;
+                    player.y = myScene * SCENE_H + SCENE_H * (0.25 + Math.random() * 0.5) - playerSize / 2;
+                    clampPlayerToScene();
+                    focusScene(myScene);
                     selfFlashUntil = Date.now() + 5000;   // pulse your blob so you can find it
                     setCamTitle();
-                    showToast('🙈 You are hiding in the ' + feeds[currentFeed].name + ' — tap NEXT CAM to switch rooms');
+                    showToast('🙈 You are hiding in the ' + scenes[myScene].name + ' — drag to move, 🖌️ to paint');
+                } else if (isSeeker) {
+                    focusScene(0);
                 }
             }
-            // Seeker starts on CAM 1; center the crosshair and clear cooldown when seeking begins.
+            // Seeker starts viewing the top room; center the crosshair and clear cooldown.
             if (isSeeker && state.phase === 'SEEKING' && prevPhase !== 'SEEKING') {
-                currentFeed = 0; camera = { x: 0, y: 0, scale: 1 };
+                focusScene(0);
                 seekerReticle.x = canvas.width/2; seekerReticle.y = canvas.height/2; seekerReticle.pokeCooldownUntil = 0;
                 setCamTitle();
-                showToast('👁️ Click a suspicious blob to poke it (mobile: press &amp; hold ~1s). NEXT CAM swaps rooms.');
+                showToast('👁️ Drag to look around. Click a blob to poke (mobile: press &amp; hold ~1s). NEXT CAM jumps rooms.');
             }
 
-            // In-room nav: only the host sees settings; only host/seeker can swap cameras.
-            document.getElementById('hostBtn').style.display = isHost ? 'inline-block' : 'none';
-            document.getElementById('nextCamBtn').style.display = (inRoom && isJoined) ? 'inline-block' : 'none';   // hiders pick a room, seeker swaps view
-
-            // Screen / control visibility per phase.
-            document.getElementById('lobby-screen').style.display = (isJoined && inLobby) ? 'flex' : 'none';
-            document.getElementById('nav-desk').style.display = inRoom ? 'flex' : 'none';
-            document.getElementById('ui-bar').style.display = (isJoined && inRoom && !isSeeker) ? 'flex' : 'none';
-            document.getElementById('pokeBtn').style.display = (isSeeker && state.phase === 'SEEKING') ? 'block' : 'none';
-            if (inLobby) renderLobby();
+            if (inLobby && !lobbyEditing) renderLobby();
+            applyChromeVisibility();
 
             const phaseLabels = { LOBBY: '', HIDING: '🙈 HIDING', SEEKING: '👁️ SEEKING', REVEAL: '🎉 REVEAL!' };
             document.getElementById('phase-label').innerText = phaseLabels[state.phase] || '';
@@ -342,14 +335,65 @@
             document.getElementById('overlay-timer').innerText = state.timeLeft > 0 ? state.timeLeft + 's' : '';
             document.getElementById('seeker-overlay').style.display = (state.phase === 'HIDING' && isSeeker) ? 'flex' : 'none';
             document.getElementById('rec-light').classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
-            document.getElementById('scoreboard').style.display = inLobby ? 'flex' : 'none';
-            layoutLobbyScoreboard();   // keep standings below the name card while it's open
-            document.getElementById('seekerBadge').style.display = (isSeeker && state.phase === 'SEEKING') ? 'inline-block' : 'none';
-            document.getElementById('poke-counter').style.display = (isSeeker && state.phase === 'SEEKING') ? 'block' : 'none';
             document.getElementById('poke-count').innerText = state.pokesLeft ?? 0;
             if (isSeeker && state.phase === 'SEEKING' && isPaint) { isPaint = false; updateUI(); }
             setCamTitle();   // keep the camera label correct for the current role/phase
         });
+
+        // All HUD/screen visibility in one place (driven by current globals), so the lobby
+        // disguise-editor and the normal phase chrome never fight over the same elements.
+        function applyChromeVisibility() {
+            const isSeeker = socket.id === seekerSocketId;
+            const inLobby = gamePhase === 'LOBBY';
+            const inRoom = !inLobby;
+            const editing = inLobby && isJoined && lobbyEditing;
+            document.getElementById('hostBtn').style.display = isHost ? 'inline-block' : 'none';
+            // NEXT CAM jumps cameras for the SEEKER only. Hiders are locked to the room they were
+            // dropped into (they can pinch/drag to LOOK around, but can't relocate their blob).
+            document.getElementById('nextCamBtn').style.display = (inRoom && isSeeker) ? 'inline-block' : 'none';
+            document.getElementById('nav-desk').style.display = inRoom ? 'flex' : 'none';
+            document.getElementById('lobby-screen').style.display = (isJoined && inLobby && !editing) ? 'flex' : 'none';
+            document.getElementById('ui-bar').style.display = ((isJoined && inRoom && !isSeeker) || editing) ? 'flex' : 'none';
+            document.getElementById('pokeBtn').style.display = (isSeeker && gamePhase === 'SEEKING') ? 'block' : 'none';
+            document.getElementById('lobbyDoneBtn').style.display = editing ? 'block' : 'none';
+            document.getElementById('seekerBadge').style.display = (isSeeker && gamePhase === 'SEEKING') ? 'inline-block' : 'none';
+            document.getElementById('poke-counter').style.display = (isSeeker && gamePhase === 'SEEKING') ? 'block' : 'none';
+            document.getElementById('scoreboard').style.display = (inLobby && !editing) ? 'flex' : 'none';
+            layoutLobbyScoreboard();
+        }
+
+        // Lobby disguise editor: hide the lobby panel, zoom in on your blob, show the paint tools.
+        function toggleLobbyEdit(on) {
+            if (!isJoined || gamePhase !== 'LOBBY') return;
+            lobbyEditing = on;
+            if (on) {
+                isPaint = true; isDrop = false;
+                myScene = 0;
+                player.x = SCENE_W / 2 - playerSize / 2; player.y = SCENE_H / 2 - playerSize / 2;
+                focusAvatar();
+                updateUI();
+                showToast('🖌️ Paint your disguise, then tap DONE');
+            }
+            applyChromeVisibility();
+            setCamTitle();
+        }
+
+        // Host controls how many rooms exist; rebuild locally + tell everyone.
+        function changeRoomCount(n) {
+            rebuildScenes(parseInt(n) || 3);
+            socket.emit('setSceneCount', n);
+            syncRoomCountUI();
+        }
+        function renderCamLoaders() {
+            const c = document.getElementById('cam-loaders');
+            if (!c) return;
+            c.innerHTML = scenes.map((s, i) =>
+                `<label class="cam-load">📷 ${s.name}<input type="file" accept="image/*" onchange="loadPhotoFile(this.files[0],${i}); this.value='';" style="display:none;"></label>`).join('');
+        }
+        function syncRoomCountUI() {
+            const rc = document.getElementById('roomCount'); if (rc) rc.value = NUM_SCENES;
+            renderCamLoaders();
+        }
 
         socket.on('updateScores', (scoreData) => {
             layoutLobbyScoreboard();   // keep standings clear of the name card
@@ -371,52 +415,75 @@
 
         const canvas = document.getElementById('gameCanvas');
         // No willReadFrequently: that hint forces the whole canvas onto the CPU and was making
-        // painting + the per-frame scene draw crawl. The eyedropper reads pixels only on release
-        // (rare), so GPU-accelerated rendering is the right trade.
+        // painting + the per-frame scene draw crawl. The eyedropper reads pixels only on release.
         const ctx = canvas.getContext('2d');
-        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if (typeof layoutLobbyScoreboard === 'function') layoutLobbyScoreboard(); }
+
+        // ── UNIFIED WORLD ───────────────────────────────────────────────────────────────
+        // Every room/photo lives in ONE big world, stacked vertically, in fixed virtual units
+        // (a scene is SCENE_W wide on every device). A player has exactly ONE (x,y) here, so a
+        // hider can never appear in more than one room, and the avatar is the same fraction of
+        // the scene on every screen. The seeker pans a viewport around to search.
+        const SCENE_W = 1000;
+        const SCENE_H = Math.round(SCENE_W * 768 / 1376);   // 558 — scene photos are 16:9
+        const BASE_NAMES = ['DINING ROOM', 'DRIVE-THRU', 'KITCHEN'];
+        let NUM_SCENES = 3;
+        let scenes = [];
+        function sceneName(i) { return BASE_NAMES[i] || ('ROOM ' + (i + 1)); }
+        function rebuildScenes(n) {
+            n = Math.max(1, Math.min(6, n || 3));
+            const old = scenes;
+            scenes = [];
+            for (let i = 0; i < n; i++) scenes[i] = { name: sceneName(i), img: (old[i] && old[i].img) || null };
+            NUM_SCENES = n;
+        }
+        rebuildScenes(3);
+        let myScene = 0;   // which room this hider occupies (camera focus + movement clamp)
+        function worldH() { return SCENE_H * NUM_SCENES; }
+
+        // camera maps world -> screen:  screen = world * camera.scale + (camera.x, camera.y)
+        let camera = { x: 0, y: 0, scale: 1 };
+        function screenToWorld(sx, sy) { return { x: (sx - camera.x) / camera.scale, y: (sy - camera.y) / camera.scale }; }
+        function fitScale() { return canvas.width / SCENE_W; }   // one scene fills the screen width
+        function clampCamera() {
+            camera.scale = Math.max(fitScale(), Math.min(fitScale() * 6, camera.scale));
+            const viewW = canvas.width / camera.scale, viewH = canvas.height / camera.scale;
+            if (viewW >= SCENE_W) camera.x = (canvas.width - SCENE_W * camera.scale) / 2;
+            else { const left = Math.max(0, Math.min(SCENE_W - viewW, -camera.x / camera.scale)); camera.x = -left * camera.scale; }
+            if (viewH >= worldH()) camera.y = (canvas.height - worldH() * camera.scale) / 2;
+            else { const top = Math.max(0, Math.min(worldH() - viewH, -camera.y / camera.scale)); camera.y = -top * camera.scale; }
+        }
+        function focusScene(i) {
+            camera.scale = fitScale(); camera.x = 0;
+            camera.y = canvas.height / 2 - (i * SCENE_H + SCENE_H / 2) * camera.scale;
+            clampCamera();
+        }
+        function sceneAtY(wy) { return Math.max(0, Math.min(NUM_SCENES - 1, Math.floor(wy / SCENE_H))); }
+        function viewCenterScene() { return sceneAtY((canvas.height / 2 - camera.y) / camera.scale); }
+        function clampPlayerToScene() {
+            const top = myScene * SCENE_H, bot = (myScene + 1) * SCENE_H;
+            player.x = Math.max(0, Math.min(SCENE_W - playerSize, player.x));
+            player.y = Math.max(top, Math.min(bot - playerSize, player.y));
+        }
+        // Zoom in on your own avatar (lobby disguise editing) — fills ~55% of the screen.
+        function focusAvatar() {
+            camera.scale = Math.min(canvas.width, canvas.height) * 0.55 / playerSize;
+            camera.x = canvas.width / 2 - (player.x + playerSize / 2) * camera.scale;
+            camera.y = canvas.height / 2 - (player.y + playerSize / 2) * camera.scale;
+        }
+
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; clampCamera(); if (typeof layoutLobbyScoreboard === 'function') layoutLobbyScoreboard(); }
         window.addEventListener('resize', resize); resize();
 
-        const feeds = [
-            { name: "DINING ROOM", img: null },
-            { name: "DRIVE-THRU", img: null },
-            { name: "KITCHEN", img: null }
-        ];
-        let currentFeed = 0;   // the room I'm viewing (seeker) or hiding in (hider)
-        let myFeed = 0;        // the room I (a hider) occupy — synced so the seeker only sees me there
-
-        // The background photo is drawn "cover" (scaled to fill, centered). This returns that
-        // drawn rectangle in WORLD space (pre-camera) for a given feed. Positions are stored as a
-        // fraction of this rect so every device — phone or desktop — lands the hider on the SAME
-        // spot of the scene, which is what makes cross-device location + poking line up.
-        function imageRect(feed) {
-            const map = feeds[feed] && feeds[feed].img;
-            if (!map) return { x: 0, y: 0, w: canvas.width, h: canvas.height };
-            const ratio = Math.max(canvas.width / map.width, canvas.height / map.height);
-            const w = map.width * ratio, h = map.height * ratio;
-            return { x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, w, h };
-        }
-        // My avatar's CENTER as a 0..1 fraction of my room's photo (what we send over the wire).
-        function selfNorm() {
-            const r = imageRect(myFeed);
-            return { nx: (player.x + playerSize / 2 - r.x) / r.w, ny: (player.y + playerSize / 2 - r.y) / r.h };
-        }
-        // A peer's normalized center -> this device's world-space avatar top-left (for drawing/poking).
-        function normToTopLeft(nx, ny, feed) {
-            const r = imageRect(feed);
-            return { x: r.x + (typeof nx === 'number' ? nx : 0.5) * r.w - playerSize / 2,
-                     y: r.y + (typeof ny === 'number' ? ny : 0.5) * r.h - playerSize / 2 };
-        }
         // Role-aware camera label: a hider sees "YOUR ROOM", a seeker sees what they're "VIEWING".
         function setCamTitle() {
-            const room = feeds[currentFeed].name;
             const isSeeker = socket.id === seekerSocketId;
+            const i = isSeeker ? viewCenterScene() : myScene;
             let prefix;
             if (isSeeker && gamePhase === 'SEEKING') prefix = '👁️ VIEWING';
-            else if (isSeeker) prefix = '👁️ CAM ' + (currentFeed + 1);
+            else if (isSeeker) prefix = '👁️ CAM ' + (i + 1);
             else if (isJoined && (gamePhase === 'HIDING' || gamePhase === 'SEEKING')) prefix = '🙈 YOUR ROOM';
-            else prefix = '📷 CAM ' + (currentFeed + 1);
-            document.getElementById('cam-title').innerText = prefix + ' — ' + room;
+            else prefix = '📷 CAM ' + (i + 1);
+            document.getElementById('cam-title').innerText = prefix + ' — ' + (scenes[i] ? scenes[i].name : 'ROOM');
         }
 
         let playerName = "NOBODY";
@@ -427,16 +494,11 @@
         // blobs are easy to see and tell apart before anyone paints a disguise.
         function hashHue(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; }
         let cHue = hashHue(myToken), cSat = 80, cLight = 55, activeColor = `hsl(${cHue}, ${cSat}%, ${cLight}%)`;
-        let camera = { x: 0, y: 0, scale: 1 };
         let showBrushPreview = false, brushPreviewTimeout;
         let whistlePulseStart = 0;
         let selfFlashUntil = 0;   // "▼ YOU" find-yourself flash expires at this time
         let scanlinePattern = null;   // cached CRT scanline fill (built once, see loop)
         let lastEmitTime = 0;
-
-        let isJoined = false;
-        let isPaint = true; 
-        let isDrop = false;
 
         function joinGame() {
             let input = document.getElementById('playerNameInput').value.trim().toUpperCase();
@@ -446,9 +508,8 @@
             isJoined = true;
             isPaint = false;
             updateUI();
-            layoutLobbyScoreboard();   // name card gone — standings go back to the corner
-            const n = selfNorm();
-            socket.emit('joinGame', { name: playerName, nx: n.nx, ny: n.ny, color: activeColor, pose: currentIdx, token: myToken, feed: myFeed });
+            layoutLobbyScoreboard();   // name card gone — standings move into the lobby panel
+            socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken });
             scheduleAvatarSync();
         }
 
@@ -456,6 +517,7 @@
             document.getElementById('settings-modal').style.display = show ? 'flex' : 'none';
             if (show) {
                 socket.emit('claimHost', myToken);   // take control (granted if nobody else holds it)
+                syncRoomCountUI();                    // reflect current room count + build the per-room photo loaders
                 const sel = document.getElementById('seekerName');
                 const prev = sel.value;
                 const list = Object.values(otherPlayers);   // server includes everyone, self included
@@ -493,19 +555,17 @@
             seekerReticle.pokeCooldownUntil = now + 700;
             const btn = document.getElementById('pokeBtn'); if (btn) { btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 700); }
 
-            // Hit-test on the seeker's own screen, against exactly where each hider is drawn here.
-            // This is what makes "poke right on the hider" actually land — no cross-device guessing.
-            const wx = (seekerReticle.x - camera.x) / camera.scale, wy = (seekerReticle.y - camera.y) / camera.scale;
+            // Hit-test against where each hider is drawn in the shared world (one position each).
+            const w = screenToWorld(seekerReticle.x, seekerReticle.y);
             let best = null, bestDist = playerSize;   // generous: full avatar reach
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id || op.id === seekerSocketId || op.isDead) return;
-                if ((op.feed || 0) !== currentFeed) return;   // only hiders in the room I'm viewing
-                const tl = normToTopLeft(op.nx, op.ny, op.feed || 0);
-                const d = Math.hypot(wx - (tl.x + playerSize/2), wy - (tl.y + playerSize/2));
+                const px = (typeof op.x === 'number') ? op.x : SCENE_W/2, py = (typeof op.y === 'number') ? op.y : SCENE_H/2;
+                const d = Math.hypot(w.x - (px + playerSize/2), w.y - (py + playerSize/2));
                 if (d < bestDist) { bestDist = d; best = op; }
             });
             // Always report; the server decides: a correct catch is free, a wrong poke costs one.
-            socket.emit('pokeAt', { targetId: best ? best.id : null, feed: currentFeed });
+            socket.emit('pokeAt', { targetId: best ? best.id : null });
         }
         // Hit = free catch; miss = a spent poke. Clear feedback either way.
         socket.on('pokeResult', ({ hit, name, pokesLeft, out }) => {
@@ -532,17 +592,15 @@
         function layoutLobbyScoreboard() {
             const sb = document.getElementById('scoreboard');
             const modal = document.getElementById('join-modal');
-            const entryOpen = modal && getComputedStyle(modal).display !== 'none';
-            if (entryOpen) {
-                // Name card is up: mount the standings INSIDE the card so they flow directly below
-                // the name input (the .in-entry class makes it static/full-width — see CSS).
-                if (sb.parentElement !== modal) modal.appendChild(sb);
-                sb.classList.add('in-entry');
-            } else {
-                // Float back out to the lobby's top-right corner.
-                if (sb.parentElement !== document.body) document.body.appendChild(sb);
-                sb.classList.remove('in-entry');
-            }
+            const lobby = document.getElementById('lobby-screen');
+            const entryOpen = getComputedStyle(modal).display !== 'none';
+            // Mount the standings INSIDE whichever lobby container is showing (name card before you
+            // join, lobby panel after) so they're always centered and never float off to a corner.
+            let parent = null;
+            if (entryOpen) parent = modal;
+            else if (isJoined && gamePhase === 'LOBBY') parent = lobby;
+            if (parent) { if (sb.parentElement !== parent) parent.appendChild(sb); sb.classList.add('in-entry'); }
+            else { if (sb.parentElement !== document.body) document.body.appendChild(sb); sb.classList.remove('in-entry'); }
         }
 
         // Load the three bundled Taco Bell scenes onto the three cameras (host quick-start).
@@ -564,7 +622,7 @@
                     off.width = w; off.height = h;
                     off.getContext('2d').drawImage(img, 0, 0, w, h);
                     const dataUrl = off.toDataURL('image/jpeg', 0.85);
-                    const fin = new Image(); fin.onload = () => { feeds[feed].img = fin; }; fin.src = dataUrl;
+                    const fin = new Image(); fin.onload = () => { if (scenes[feed]) scenes[feed].img = fin; }; fin.src = dataUrl;
                     socket.emit('hostMap', { feedIndex: feed, dataUrl });
                 };
                 img.src = file;
@@ -604,25 +662,19 @@
             setTimeout(() => el.remove(), 3000);
         });
 
-        function drawTestPattern() {
-            const vw = canvas.width, vh = canvas.height;
-            const bw = vw / 7, barH = vh * 0.75;
-            ['#C0C0C0','#C0C000','#00C0C0','#00C000','#C000C0','#C00000','#0000C0'].forEach((c, i) => {
-                ctx.fillStyle = c; ctx.fillRect(i * bw, 0, bw + 1, barH);
-            });
-            ['#0000C0','#131313','#C000C0','#131313','#00C0C0','#131313','#C0C0C0'].forEach((c, i) => {
-                ctx.fillStyle = c; ctx.fillRect(i * bw, barH, bw + 1, vh - barH);
-            });
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            for (let y = 0; y < vh; y += 4) ctx.fillRect(0, y, vw, 2);
-            ctx.fillStyle = 'rgba(255,255,255,0.06)';
-            for (let i = 0; i < 700; i++) ctx.fillRect(Math.random() * vw | 0, Math.random() * vh | 0, 2, 1);
-            const cx = vw / 2, cy = vh / 2;
-            ctx.fillStyle = 'rgba(0,0,0,0.82)'; ctx.fillRect(cx - 130, cy - 32, 260, 62);
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.strokeRect(cx - 130, cy - 32, 260, 62);
+        // Per-room "no signal" drawn in WORLD space (inside the camera transform), for any room
+        // that doesn't have a photo loaded yet.
+        function drawSceneNoSignal(i) {
+            const y = i * SCENE_H;
+            ctx.fillStyle = '#0b0b14'; ctx.fillRect(0, y, SCENE_W, SCENE_H);
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            for (let gx = 0; gx < SCENE_W; gx += 40) ctx.fillRect(gx, y, 1, SCENE_H);
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace'; ctx.fillText('NO SIGNAL', cx, cy - 6);
-            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px monospace'; ctx.fillText('LOAD MAP TO CONNECT FEED', cx, cy + 16);
+            ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = 'bold 46px monospace';
+            ctx.fillText('NO SIGNAL', SCENE_W / 2, y + SCENE_H / 2 - 10);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '22px monospace';
+            ctx.fillText('CAM ' + (i + 1) + ' — ' + (scenes[i] ? scenes[i].name : ''), SCENE_W / 2, y + SCENE_H / 2 + 32);
+            ctx.textBaseline = 'alphabetic';
         }
         
         const wheelCvs = document.getElementById('wheelCanvas'), wCtx = wheelCvs.getContext('2d'), wRadius = wheelCvs.width / 2;
@@ -678,10 +730,10 @@
                     off.getContext('2d').drawImage(img, 0, 0, w, h);
                     const dataUrl = off.toDataURL('image/jpeg', 0.82);
                     const finalImg = new Image();
-                    finalImg.onload = () => { feeds[feedIndex].img = finalImg; };
+                    finalImg.onload = () => { if (scenes[feedIndex]) scenes[feedIndex].img = finalImg; };
                     finalImg.src = dataUrl;
                     socket.emit('hostMap', { feedIndex, dataUrl });
-                    showToast('📷 Loaded a photo onto ' + feeds[feedIndex].name);
+                    showToast('📷 Loaded a photo onto ' + (scenes[feedIndex] ? scenes[feedIndex].name : 'a room'));
                 };
                 img.src = ev.target.result;
             };
@@ -690,24 +742,29 @@
 
         socket.on('loadMap', ({ feedIndex, dataUrl }) => {
             const img = new Image();
-            img.onload = () => { feeds[feedIndex].img = img; };
+            img.onload = () => { if (scenes[feedIndex]) scenes[feedIndex].img = img; };
             img.src = dataUrl;
         });
 
         function changeCamera(dir) {
-            currentFeed = (currentFeed + dir + feeds.length) % feeds.length;
-            camera = { x: 0, y: 0, scale: 1 };
-            // Seeker: just changes which room they're watching. Everyone else: this is the room
-            // they're hiding in — broadcast it immediately so the seeker only sees them in that room.
-            if (socket.id !== seekerSocketId) {
-                myFeed = currentFeed;
-                if (isJoined) { const n = selfNorm(); socket.emit('playerUpdate', { nx: n.nx, ny: n.ny, pose: currentIdx, color: activeColor, feed: myFeed }); }
+            if (socket.id === seekerSocketId) {
+                // Seeker: jump the viewport to the next room in the stacked world.
+                focusScene((viewCenterScene() + dir + NUM_SCENES) % NUM_SCENES);
+            } else if (isJoined) {
+                // Hider: relocate to the next room (drop into a fresh spot there).
+                myScene = (myScene + dir + NUM_SCENES) % NUM_SCENES;
+                player.x = SCENE_W * (0.2 + Math.random() * 0.6) - playerSize / 2;
+                player.y = myScene * SCENE_H + SCENE_H * (0.3 + Math.random() * 0.4) - playerSize / 2;
+                clampPlayerToScene();
+                focusScene(myScene);
+                socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor });
             }
             setCamTitle();
         }
 
-        const playerSize = 75;
+        const playerSize = 75;   // avatar size in WORLD units (a fixed ~7.5% of a scene -> same on every device)
         let dropTarget = null, dragGrab = null, mouseDown = false, mousePanning = false, panLast = {x:0, y:0};
+        let seekerDown = null;   // seeker gesture: distinguishes a click (poke) from a drag (pan)
         function getPath(t) {
             const p = new Path2D();
             if(t==='stand'){ p.arc(37.5,18,12,0.25*Math.PI,0.75*Math.PI,true); p.lineTo(25,32); p.lineTo(12,36); p.lineTo(14,46); p.lineTo(25,46); p.lineTo(25,54); p.lineTo(20,72); p.lineTo(30,72); p.lineTo(37.5,58); p.lineTo(45,72); p.lineTo(55,72); p.lineTo(50,54); p.lineTo(50,46); p.lineTo(61,46); p.lineTo(63,36); p.lineTo(50,32); p.closePath(); }
@@ -738,17 +795,20 @@
 
         const seekerReticle = { x: 0, y: 0, lockTarget: null, lockStartTime: 0, pokeCooldownUntil: 0 };
 
-        // Mobile press-and-hold-to-poke: hold ~1s on a spot to fire (desktop just clicks). Drifting
-        // off the spot cancels it. A progress ring (drawn in the loop) shows the hold filling.
-        let pokeHold = null;   // { x, y, start, timer }
+        // Mobile seeker gesture: a one-finger DRAG pans the viewport; HOLDING still for ~1s pokes.
+        // (Desktop pokes with a plain click.) A progress ring shows the hold filling.
+        let pokeHold = null;   // { x, y, start, panning, timer }
         function startPokeHold(x, y) {
             cancelPokeHold();
-            seekerReticle.x = x; seekerReticle.y = y;
-            pokeHold = { x, y, start: Date.now(), timer: setTimeout(() => { const ph = pokeHold; pokeHold = null; if (ph) seekerPoke(); }, 1000) };
+            seekerReticle.x = x; seekerReticle.y = y; panLast = { x, y };
+            pokeHold = { x, y, start: Date.now(), panning: false, timer: setTimeout(() => { const ph = pokeHold; if (ph && !ph.panning) { pokeHold = null; seekerPoke(); } }, 1000) };
         }
         function updatePokeHold(x, y) {
             seekerReticle.x = x; seekerReticle.y = y;
-            if (pokeHold && Math.hypot(x - pokeHold.x, y - pokeHold.y) > 28) cancelPokeHold();
+            if (!pokeHold) return;
+            if (!pokeHold.panning && Math.hypot(x - pokeHold.x, y - pokeHold.y) > 16) { pokeHold.panning = true; clearTimeout(pokeHold.timer); }
+            if (pokeHold.panning) { camera.x += x - panLast.x; camera.y += y - panLast.y; clampCamera(); setCamTitle(); }
+            panLast = { x, y };
         }
         function cancelPokeHold() { if (pokeHold) { clearTimeout(pokeHold.timer); pokeHold = null; } }
 
@@ -757,7 +817,12 @@
         // Right-drag or Shift+drag = pan. Wheel = zoom toward cursor.
         canvas.onmousemove = (e) => {
             seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; // seeker aim follows the cursor
-            if(mousePanning) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; return; }
+            if(mousePanning) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); return; }
+            if(seekerDown && mouseDown) {   // seeker: a drag pans the viewport (a click pokes)
+                if(!seekerDown.moved && Math.hypot(e.clientX - seekerDown.x, e.clientY - seekerDown.y) > 6) seekerDown.moved = true;
+                if(seekerDown.moved) { camera.x += e.clientX - panLast.x; camera.y += e.clientY - panLast.y; panLast = {x:e.clientX, y:e.clientY}; clampCamera(); setCamTitle(); }
+                return;
+            }
             if(!mouseDown || isDead) return;
             if(isPaint) paintAt(e.clientX, e.clientY);
             else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
@@ -768,9 +833,9 @@
             if(e.button !== 0) return;
             mouseDown = true;
             if(isDead) return;
-            if(isPaint) paintAt(e.clientX, e.clientY);
+            if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerDown = { x:e.clientX, y:e.clientY, moved:false }; panLast = {x:e.clientX, y:e.clientY}; seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
+            else if(isPaint) paintAt(e.clientX, e.clientY);
             else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
-            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; seekerPoke(); }   // click = poke
             else if(isJoined) grabAvatar(e.clientX, e.clientY);
         };
         canvas.onmouseup = () => {
@@ -778,6 +843,7 @@
             if(!mouseDown) return;
             mouseDown = false;
             paintLast = null;   // end the brush stroke
+            if(seekerDown) { if(!seekerDown.moved) seekerPoke(); seekerDown = null; }   // click (no drag) = poke
             if(isDrop && dropTarget && !isDead) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
             dragGrab = null;
         };
@@ -785,10 +851,11 @@
         canvas.onwheel = (e) => {
             e.preventDefault();
             const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
-            const ns = Math.min(Math.max(0.5, camera.scale * factor), 5), sd = ns / camera.scale;
+            const sd = factor;
             camera.x = e.clientX - (e.clientX - camera.x) * sd;
             camera.y = e.clientY - (e.clientY - camera.y) * sd;
-            camera.scale = ns;
+            camera.scale *= factor;
+            clampCamera();
         };
 
         let isPanning = false, initialDist = 0, initialScale = 1, lastPan = {x:0, y:0};
@@ -801,8 +868,8 @@
         };
         canvas.ontouchmove = (e) => {
             if(isPanning && e.touches.length === 2) {
-                let t1=e.touches[0], t2=e.touches[1], dist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY), cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2, s=Math.min(Math.max(0.5, initialScale*(dist/initialDist)), 5), sd=s/camera.scale;
-                camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy};
+                let t1=e.touches[0], t2=e.touches[1], dist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY), cx=(t1.clientX+t2.clientX)/2, cy=(t1.clientY+t2.clientY)/2, s=initialScale*(dist/initialDist), sd=s/camera.scale;
+                camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy}; clampCamera();
             } else if(isPaint && !isDead) { e.preventDefault(); paintAt(e.touches[0].clientX, e.touches[0].clientY); }
             else if(isDrop && !isDead) { e.preventDefault(); dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
             else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); updatePokeHold(e.touches[0].clientX, e.touches[0].clientY); }
@@ -854,6 +921,7 @@
             if(!dragGrab) return;
             const w = screenToWorld(sx, sy);
             player.x = w.x - dragGrab.dx; player.y = w.y - dragGrab.dy;
+            clampPlayerToScene();   // hiders stay inside their own room
         }
 
         // Caught players slide down + tip over, then settle — used for self AND others so the catch is visible to everyone.
@@ -865,20 +933,16 @@
         }
 
         function loop() {
-            if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); const n = selfNorm(); socket.emit('playerUpdate', { nx: n.nx, ny: n.ny, pose: currentIdx, color: activeColor, feed: myFeed }); }
+            if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
 
-            const activeMap = feeds[currentFeed].img;
-            if (!activeMap) {
-                drawTestPattern();
-            } else {
-                ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
-            }
+            ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
             ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.scale, camera.scale);
-            
-            if(activeMap) {
-                const ratio = Math.max(canvas.width / activeMap.width, canvas.height / activeMap.height);
-                const w = activeMap.width * ratio, h = activeMap.height * ratio;
-                ctx.drawImage(activeMap, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+
+            // Draw every room stacked in the one shared world.
+            for (let i = 0; i < NUM_SCENES; i++) {
+                const img = scenes[i] && scenes[i].img;
+                if (img) ctx.drawImage(img, 0, i * SCENE_H, SCENE_W, SCENE_H);
+                else drawSceneNoSignal(i);
             }
 
             const active = poses[currentIdx], breath = isDead ? 1 : 1+Math.sin(Date.now()/1000)*0.004;
@@ -945,14 +1009,14 @@
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id) return;
                 if (op.id === seekerSocketId) return;   // the seeker is the camera, not a blob in the room
-                if ((op.feed || 0) !== currentFeed) return;   // only show hiders in the room I'm viewing
+                const px = (typeof op.x === 'number') ? op.x : SCENE_W/2;   // single world position
+                const py = (typeof op.y === 'number') ? op.y : SCENE_H/2;
                 const opPose = poses[op.pose || 0];
-                const tl = normToTopLeft(op.nx, op.ny, op.feed || 0);   // their scene spot -> my screen
                 let slide = { x:0, y:0, rot:0 };
                 if (op.isDead) { if (!deadAnimAt[op.id]) deadAnimAt[op.id] = Date.now(); slide = deadSlide(Date.now() - deadAnimAt[op.id]); }
                 else if (deadAnimAt[op.id]) delete deadAnimAt[op.id];
                 ctx.save();
-                ctx.translate(tl.x + playerSize/2 + slide.x, tl.y + playerSize/2 + slide.y);
+                ctx.translate(px + playerSize/2 + slide.x, py + playerSize/2 + slide.y);
                 ctx.rotate(slide.rot);
                 ctx.translate(-playerSize/2, -playerSize/2);
                 const av = otherAvatars[op.id];
@@ -1023,7 +1087,7 @@
                     ctx.beginPath(); ctx.arc(rx,ry,22,-Math.PI/2,-Math.PI/2+coolProg*Math.PI*2); ctx.stroke();
                 }
                 // Press-and-hold progress ring (mobile) filling toward the poke.
-                if (pokeHold) {
+                if (pokeHold && !pokeHold.panning) {
                     const prog = Math.min(1, (Date.now() - pokeHold.start) / 1000);
                     ctx.strokeStyle = 'rgba(255,235,59,0.35)'; ctx.lineWidth = 5;
                     ctx.beginPath(); ctx.arc(pokeHold.x, pokeHold.y, 32, 0, Math.PI * 2); ctx.stroke();
