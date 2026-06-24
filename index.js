@@ -88,6 +88,10 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('emojiReaction', (data) => {
+        io.emit('emojiReaction', { emoji: data.emoji, name: data.name });
+    });
+
     socket.on('resetGame', () => {
         clearInterval(gameTimer);
         gamePhase = 'LOBBY';

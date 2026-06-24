@@ -55,6 +55,11 @@
         #reveal-banner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 10px; z-index: 15; pointer-events: none; }
         #reveal-banner .reveal-title { color: #fff; font-family: monospace; font-size: 2.5em; font-weight: bold; text-shadow: 0 0 20px #fff; letter-spacing: 4px; }
 
+        .emoji-bubble { position: absolute; display: flex; flex-direction: column; align-items: center; z-index: 11; pointer-events: none; font-size: 2.2em; animation: eb-float 3s ease-out forwards; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8)); }
+        .eb-name { font-size: 0.28em; color: #fff; font-family: monospace; background: rgba(0,0,0,0.75); padding: 2px 6px; border-radius: 3px; white-space: nowrap; margin-top: 2px; letter-spacing: 1px; }
+        @keyframes eb-float { 0% { opacity:1; transform:translateY(0) scale(1); } 25% { transform:translateY(-30px) scale(1.25); } 80% { opacity:1; } 100% { opacity:0; transform:translateY(-220px) scale(0.7); } }
+        #react-row button { padding: 7px 4px; font-size: 1.25em; flex-grow: 1; background: rgba(255,255,255,0.07); border: 1px solid #333; }
+
         #scoreboard { position: absolute; top: 50px; right: 15px; background: rgba(15,15,20,0.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; z-index: 10; display: none; flex-direction: column; gap: 6px; min-width: 230px; font-family: monospace; color: white; box-shadow: 0 4px 24px rgba(0,0,0,0.9); }
         #scoreboard .sb-title { font-size: 0.85em; font-weight: bold; letter-spacing: 2px; color: #ffeb3b; border-bottom: 1px solid #333; padding-bottom: 6px; margin-bottom: 2px; text-align: center; }
         #scoreboard .sb-header { display: flex; justify-content: space-between; font-size: 0.65em; color: #666; padding: 0 2px; }
@@ -136,6 +141,14 @@
                 <span id="brushLabel">10px</span>
             </div>
             <button id="whistleBtn" style="flex-grow:0; width:50px; background: #37474f;">🔔</button>
+        </div>
+        <div class="ui-row" id="react-row">
+            <button onclick="sendReaction('👀')">👀</button>
+            <button onclick="sendReaction('😱')">😱</button>
+            <button onclick="sendReaction('🎉')">🎉</button>
+            <button onclick="sendReaction('🫵')">🫵</button>
+            <button onclick="sendReaction('💀')">💀</button>
+            <button onclick="sendReaction('🤡')">🤡</button>
         </div>
     </div>
     
@@ -234,6 +247,43 @@
         function resetGame() {
             socket.emit('resetGame');
             toggleSettingsModal(false);
+        }
+
+        function sendReaction(emoji) {
+            if (!isJoined) return;
+            socket.emit('emojiReaction', { emoji, name: playerName });
+        }
+
+        socket.on('emojiReaction', ({ emoji, name }) => {
+            const el = document.createElement('div');
+            el.className = 'emoji-bubble';
+            el.innerHTML = `${emoji}<span class="eb-name">${name}</span>`;
+            const margin = 80;
+            el.style.left = (margin + Math.random() * (window.innerWidth - margin * 2)) + 'px';
+            el.style.bottom = '180px';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        });
+
+        function drawTestPattern() {
+            const vw = canvas.width, vh = canvas.height;
+            const bw = vw / 7, barH = vh * 0.75;
+            ['#C0C0C0','#C0C000','#00C0C0','#00C000','#C000C0','#C00000','#0000C0'].forEach((c, i) => {
+                ctx.fillStyle = c; ctx.fillRect(i * bw, 0, bw + 1, barH);
+            });
+            ['#0000C0','#131313','#C000C0','#131313','#00C0C0','#131313','#C0C0C0'].forEach((c, i) => {
+                ctx.fillStyle = c; ctx.fillRect(i * bw, barH, bw + 1, vh - barH);
+            });
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            for (let y = 0; y < vh; y += 4) ctx.fillRect(0, y, vw, 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.06)';
+            for (let i = 0; i < 700; i++) ctx.fillRect(Math.random() * vw | 0, Math.random() * vh | 0, 2, 1);
+            const cx = vw / 2, cy = vh / 2;
+            ctx.fillStyle = 'rgba(0,0,0,0.82)'; ctx.fillRect(cx - 130, cy - 32, 260, 62);
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.strokeRect(cx - 130, cy - 32, 260, 62);
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace'; ctx.fillText('NO SIGNAL', cx, cy - 6);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px monospace'; ctx.fillText('LOAD MAP TO CONNECT FEED', cx, cy + 16);
         }
         
         const wheelCvs = document.getElementById('wheelCanvas'), wCtx = wheelCvs.getContext('2d'), wRadius = wheelCvs.width / 2;
@@ -377,10 +427,14 @@
 
             if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
 
-            ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            const activeMap = feeds[currentFeed].img;
+            if (!activeMap) {
+                drawTestPattern();
+            } else {
+                ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            }
             ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.scale, camera.scale);
             
-            const activeMap = feeds[currentFeed].img;
             if(activeMap) {
                 const ratio = Math.max(canvas.width / activeMap.width, canvas.height / activeMap.height);
                 const w = activeMap.width * ratio, h = activeMap.height * ratio;
