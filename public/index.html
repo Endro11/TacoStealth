@@ -9,15 +9,16 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #050508; overflow: hidden; font-family: sans-serif; overscroll-behavior: none; touch-action: none; }
         canvas { display: block; touch-action: none; cursor: crosshair; }
 
-        #monitor-hud { position: absolute; top: 12px; left: 15px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 10; font-family: monospace; color: #fff; font-size: 1.1em; text-shadow: 2px 2px 2px #000; }
-        #rec-light { width: 14px; height: 14px; background: #ff0000; border-radius: 50%; box-shadow: 0 0 8px #ff0000; display: inline-block; opacity: 0; }
+        #monitor-hud { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); display: flex; align-items: center; gap: 8px; pointer-events: none; z-index: 10; font-family: monospace; color: #fff; font-size: 1em; text-shadow: 2px 2px 2px #000; max-width: 46vw; }
+        #cam-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #rec-light { width: 13px; height: 13px; background: #ff0000; border-radius: 50%; box-shadow: 0 0 8px #ff0000; display: inline-block; opacity: 0; flex-shrink: 0; }
         @keyframes pulse { 50% { opacity: 1; } }
         .recording { animation: pulse 1s infinite; }
 
-        #nav-desk { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
-        .nav-btn { padding: 6px 12px; background: rgba(25, 25, 30, 0.9); color: white; border: 1px solid #555; border-radius: 6px; font-weight: bold; font-size: 0.8em; cursor: pointer; }
+        #nav-desk { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); display: flex; gap: 6px; z-index: 10; }
+        .nav-btn { padding: 7px 12px; background: rgba(25, 25, 30, 0.9); color: white; border: 1px solid #555; border-radius: 6px; font-weight: bold; font-size: 0.8em; cursor: pointer; white-space: nowrap; }
 
-        #ui-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; background: rgba(25, 25, 30, 0.95); padding: 12px 10px; border-radius: 12px; box-shadow: 0px -4px 20px rgba(0,0,0,0.8); width: 95%; max-width: 450px; z-index: 10; border: 1px solid #444; }
+        #ui-bar { position: absolute; bottom: calc(10px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; background: rgba(25, 25, 30, 0.95); padding: 12px 10px; border-radius: 12px; box-shadow: 0px -4px 20px rgba(0,0,0,0.8); width: 95%; max-width: 450px; z-index: 10; border: 1px solid #444; box-sizing: border-box; }
         .ui-row { display: flex; gap: 8px; width: 100%; align-items: center; justify-content: center; }
         button, .btn-custom { padding: 10px; font-weight: bold; cursor: pointer; border: none; border-radius: 6px; background: #333; color: #fff; font-size: 0.85em; flex-grow: 1; text-align: center; text-transform: uppercase; }
         .btn-custom { background: #2e7d32; }
@@ -39,7 +40,7 @@
         #playerNameInput { width: 80%; padding: 12px; font-size: 1.1em; text-align: center; border-radius: 6px; border: none; outline: none; margin: 10px 0; font-weight: bold; text-transform: uppercase; background: #ddd; }
 
 
-        #phase-hud { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; z-index: 10; pointer-events: none; font-family: monospace; color: #fff; font-size: 1.3em; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,255,0.4), 2px 2px 2px #000; }
+        #phase-hud { position: absolute; top: calc(48px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; z-index: 10; pointer-events: none; font-family: monospace; color: #fff; font-size: 1.3em; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,255,0.4), 2px 2px 2px #000; }
         #timer-hud { font-size: 1.8em; color: #ffeb3b; text-shadow: 0 0 12px rgba(255,235,59,0.8), 2px 2px 2px #000; }
 
         #seeker-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 20; flex-direction: column; align-items: center; justify-content: center; gap: 20px; display: none; }
@@ -58,12 +59,12 @@
         #react-row button { padding: 7px 4px; font-size: 1.25em; flex-grow: 1; background: rgba(255,255,255,0.07); border: 1px solid #333; }
         #lobby-row { display: none; }
         #lobby-row button { background: #1565c0; letter-spacing: 1px; font-size: 0.85em; }
-        #volunteer-toast { display: none; position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(21,101,192,0.96); color: #fff; font-family: monospace; padding: 10px 22px; border-radius: 8px; font-size: 0.9em; text-align: center; pointer-events: none; border: 1px solid #5090ff; white-space: nowrap; animation: toast-in 0.25s ease-out; }
+        #volunteer-toast { display: none; position: absolute; top: calc(92px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(21,101,192,0.96); color: #fff; font-family: monospace; padding: 10px 22px; border-radius: 8px; font-size: 0.9em; text-align: center; pointer-events: none; border: 1px solid #5090ff; white-space: nowrap; animation: toast-in 0.25s ease-out; }
         @keyframes toast-in { from { opacity:0; transform:translateX(-50%) translateY(-8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
         #score-list { max-height: 52vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 transparent; }
         #player-count { font-size: 0.7em; color: #888; font-family: monospace; margin-left: 4px; }
 
-        #scoreboard { position: absolute; top: 50px; right: 15px; background: rgba(15,15,20,0.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; z-index: 19; display: none; flex-direction: column; gap: 6px; min-width: 230px; font-family: monospace; color: white; box-shadow: 0 4px 24px rgba(0,0,0,0.9); }
+        #scoreboard { position: absolute; top: calc(50px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); background: rgba(15,15,20,0.96); border: 1px solid #444; border-radius: 10px; padding: 12px 14px; z-index: 19; display: none; flex-direction: column; gap: 6px; min-width: 230px; font-family: monospace; color: white; box-shadow: 0 4px 24px rgba(0,0,0,0.9); }
         #scoreboard .sb-title { font-size: 0.85em; font-weight: bold; letter-spacing: 2px; color: #ffeb3b; border-bottom: 1px solid #333; padding-bottom: 6px; margin-bottom: 2px; text-align: center; }
         #scoreboard .sb-header { display: flex; justify-content: space-between; font-size: 0.65em; color: #666; padding: 0 2px; }
         .sb-row { display: flex; align-items: center; gap: 6px; padding: 4px 2px; border-radius: 4px; font-size: 0.82em; }
@@ -75,7 +76,7 @@
         .sb-catches { color: #ef9a9a; }
         .sb-empty { color: #555; font-size: 0.8em; text-align: center; padding: 8px 0; }
 
-        #pokeBtn { display:none; position:absolute; bottom:26px; left:50%; transform:translateX(-50%); z-index:16; padding:16px 46px; font-size:1.35em; font-weight:bold; letter-spacing:2px; color:#fff; background:#c62828; border:none; border-radius:40px; box-shadow:0 6px 22px rgba(0,0,0,0.6); text-transform:uppercase; cursor:pointer; }
+        #pokeBtn { display:none; position:absolute; bottom:calc(26px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:16; padding:16px 46px; font-size:1.35em; font-weight:bold; letter-spacing:2px; color:#fff; background:#c62828; border:none; border-radius:40px; box-shadow:0 6px 22px rgba(0,0,0,0.6); text-transform:uppercase; cursor:pointer; }
         #pokeBtn:active { transform:translateX(-50%) scale(0.94); }
         #pokeBtn:disabled { background:#666; opacity:0.55; }
 
@@ -113,7 +114,7 @@
                 <button onclick="randomizeSeeker()" style="width:38px; padding:6px; background:#37474f; font-size:1.1em;" title="Pick random">🎲</button>
             </div>
         </div>
-        <button onclick="loadSampleRooms()" style="width: 100%; background: #00695c; padding: 10px;">🎲 USE SAMPLE ROOMS</button>
+        <button id="sampleBtn" onclick="loadSampleRooms()" style="width: 100%; background: #00695c; padding: 10px;">🌮 USE TACO BELL SCENES</button>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
@@ -140,7 +141,7 @@
 
     <div id="monitor-hud">
         <span id="rec-light"></span>
-        <span id="cam-title">CAM 1: MAIN DINING</span>
+        <span id="cam-title">📷 CAM 1 — DINING ROOM</span>
     </div>
 
     <div id="nav-desk">
@@ -150,7 +151,7 @@
     </div>
 
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
-    <div id="poke-counter" style="display:none; position:absolute; top:50px; left:15px; z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">💀 POKES: <span id="poke-count">5</span></div>
+    <div id="poke-counter" style="display:none; position:absolute; top:calc(48px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">💀 POKES: <span id="poke-count">5</span></div>
 
     <div id="volunteer-toast">🙋 <span id="volunteer-name">PLAYER</span> wants to be seeker!</div>
 
@@ -220,7 +221,7 @@
                 document.getElementById('join-modal').style.display = 'none';
                 isJoined = true; isPaint = false; updateUI();
             }
-            if (isJoined) { socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken }); scheduleAvatarSync(); }
+            if (isJoined) { const n = selfNorm(); socket.emit('joinGame', { name: playerName, nx: n.nx, ny: n.ny, color: activeColor, pose: currentIdx, token: myToken, feed: myFeed }); scheduleAvatarSync(); }
         });
 
         let otherPlayers = {};
@@ -282,18 +283,30 @@
             if (prevPhase !== 'HIDING' && state.phase === 'HIDING') {
                 camera = { x: 0, y: 0, scale: 1 };
                 if (isJoined && !isSeeker) {
-                    player.x = canvas.width/2 - playerSize/2 + (Math.random()*2-1) * Math.min(canvas.width, 700) * 0.32;
-                    player.y = canvas.height/2 - playerSize/2 + (Math.random()*2-1) * Math.min(canvas.height, 520) * 0.30;
+                    // Drop into a random room that actually has a photo (hider can switch with NEXT CAM).
+                    const rooms = feeds.map((f, i) => f.img ? i : -1).filter(i => i >= 0);
+                    myFeed = rooms.length ? rooms[Math.floor(Math.random() * rooms.length)] : 0;
+                    currentFeed = myFeed;
+                    // Spawn within the central part of the actual scene photo (not raw screen px),
+                    // so hiders start spread out over the room on every device.
+                    const r = imageRect(myFeed);
+                    player.x = r.x + r.w * (0.5 + (Math.random()*2-1) * 0.30) - playerSize/2;
+                    player.y = r.y + r.h * (0.5 + (Math.random()*2-1) * 0.28) - playerSize/2;
+                    setCamTitle();
+                    showToast('🙈 You are hiding in the ' + feeds[currentFeed].name + ' — tap NEXT CAM to switch rooms');
                 }
             }
-            // Center the seeker's crosshair (and clear cooldown) when seeking begins.
+            // Seeker starts on CAM 1; center the crosshair and clear cooldown when seeking begins.
             if (isSeeker && state.phase === 'SEEKING' && prevPhase !== 'SEEKING') {
+                currentFeed = 0; camera = { x: 0, y: 0, scale: 1 };
                 seekerReticle.x = canvas.width/2; seekerReticle.y = canvas.height/2; seekerReticle.pokeCooldownUntil = 0;
+                setCamTitle();
+                showToast('👁️ Swap cameras (NEXT CAM) to hunt for hiders in each room');
             }
 
             // In-room nav: only the host sees settings; only host/seeker can swap cameras.
             document.getElementById('hostBtn').style.display = isHost ? 'inline-block' : 'none';
-            document.getElementById('nextCamBtn').style.display = (isHost || isSeeker) ? 'inline-block' : 'none';
+            document.getElementById('nextCamBtn').style.display = (inRoom && isJoined) ? 'inline-block' : 'none';   // hiders pick a room, seeker swaps view
 
             // Screen / control visibility per phase.
             document.getElementById('lobby-screen').style.display = (isJoined && inLobby) ? 'flex' : 'none';
@@ -309,10 +322,12 @@
             document.getElementById('seeker-overlay').style.display = (state.phase === 'HIDING' && isSeeker) ? 'flex' : 'none';
             document.getElementById('rec-light').classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
             document.getElementById('scoreboard').style.display = inLobby ? 'flex' : 'none';
+            layoutLobbyScoreboard();   // keep standings below the name card while it's open
             document.getElementById('seekerBadge').style.display = (isSeeker && state.phase === 'SEEKING') ? 'inline-block' : 'none';
             document.getElementById('poke-counter').style.display = (isSeeker && state.phase === 'SEEKING') ? 'block' : 'none';
             document.getElementById('poke-count').innerText = state.pokesLeft ?? 0;
             if (isSeeker && state.phase === 'SEEKING' && isPaint) { isPaint = false; updateUI(); }
+            setCamTitle();   // keep the camera label correct for the current role/phase
         });
 
         socket.on('updateScores', (scoreData) => {
@@ -334,16 +349,51 @@
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if (typeof layoutLobbyScoreboard === 'function') layoutLobbyScoreboard(); }
         window.addEventListener('resize', resize); resize();
 
         const feeds = [
-            { name: "CAM 1: MAIN DINING", img: null },
-            { name: "CAM 2: LIVING ROOM", img: null },
-            { name: "CAM 3: BACKYARD", img: null }
+            { name: "DINING ROOM", img: null },
+            { name: "DRIVE-THRU", img: null },
+            { name: "KITCHEN", img: null }
         ];
-        let currentFeed = 0;
-        
+        let currentFeed = 0;   // the room I'm viewing (seeker) or hiding in (hider)
+        let myFeed = 0;        // the room I (a hider) occupy — synced so the seeker only sees me there
+
+        // The background photo is drawn "cover" (scaled to fill, centered). This returns that
+        // drawn rectangle in WORLD space (pre-camera) for a given feed. Positions are stored as a
+        // fraction of this rect so every device — phone or desktop — lands the hider on the SAME
+        // spot of the scene, which is what makes cross-device location + poking line up.
+        function imageRect(feed) {
+            const map = feeds[feed] && feeds[feed].img;
+            if (!map) return { x: 0, y: 0, w: canvas.width, h: canvas.height };
+            const ratio = Math.max(canvas.width / map.width, canvas.height / map.height);
+            const w = map.width * ratio, h = map.height * ratio;
+            return { x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, w, h };
+        }
+        // My avatar's CENTER as a 0..1 fraction of my room's photo (what we send over the wire).
+        function selfNorm() {
+            const r = imageRect(myFeed);
+            return { nx: (player.x + playerSize / 2 - r.x) / r.w, ny: (player.y + playerSize / 2 - r.y) / r.h };
+        }
+        // A peer's normalized center -> this device's world-space avatar top-left (for drawing/poking).
+        function normToTopLeft(nx, ny, feed) {
+            const r = imageRect(feed);
+            return { x: r.x + (typeof nx === 'number' ? nx : 0.5) * r.w - playerSize / 2,
+                     y: r.y + (typeof ny === 'number' ? ny : 0.5) * r.h - playerSize / 2 };
+        }
+        // Role-aware camera label: a hider sees "YOUR ROOM", a seeker sees what they're "VIEWING".
+        function setCamTitle() {
+            const room = feeds[currentFeed].name;
+            const isSeeker = socket.id === seekerSocketId;
+            let prefix;
+            if (isSeeker && gamePhase === 'SEEKING') prefix = '👁️ VIEWING';
+            else if (isSeeker) prefix = '👁️ CAM ' + (currentFeed + 1);
+            else if (isJoined && (gamePhase === 'HIDING' || gamePhase === 'SEEKING')) prefix = '🙈 YOUR ROOM';
+            else prefix = '📷 CAM ' + (currentFeed + 1);
+            document.getElementById('cam-title').innerText = prefix + ' — ' + room;
+        }
+
         let playerName = "NOBODY";
         let isDead = false, deadAt = 0;
         const deadAnimAt = {};   // other players' id -> time we first saw them dead (drives the slide anim)
@@ -366,7 +416,9 @@
             isJoined = true;
             isPaint = false;
             updateUI();
-            socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx, token: myToken });
+            layoutLobbyScoreboard();   // name card gone — standings go back to the corner
+            const n = selfNorm();
+            socket.emit('joinGame', { name: playerName, nx: n.nx, ny: n.ny, color: activeColor, pose: currentIdx, token: myToken, feed: myFeed });
             scheduleAvatarSync();
         }
 
@@ -408,10 +460,21 @@
             if (gamePhase !== 'SEEKING' || socket.id !== seekerSocketId) return;
             const now = Date.now();
             if (now < seekerReticle.pokeCooldownUntil) return;
-            const wx = (seekerReticle.x - camera.x) / camera.scale, wy = (seekerReticle.y - camera.y) / camera.scale;
-            socket.emit('pokeAt', { x: wx, y: wy });
             seekerReticle.pokeCooldownUntil = now + 1000;
             const btn = document.getElementById('pokeBtn'); btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 1000);
+
+            // Hit-test on the seeker's own screen, against exactly where each hider is drawn here.
+            // This is what makes "poke right on the hider" actually land — no cross-device guessing.
+            const wx = (seekerReticle.x - camera.x) / camera.scale, wy = (seekerReticle.y - camera.y) / camera.scale;
+            let best = null, bestDist = playerSize * 0.9;   // generous: roughly the avatar's reach
+            Object.values(otherPlayers).forEach(op => {
+                if (op.id === socket.id || op.id === seekerSocketId || op.isDead) return;
+                if ((op.feed || 0) !== currentFeed) return;   // only hiders in the room I'm viewing
+                const tl = normToTopLeft(op.nx, op.ny, op.feed || 0);
+                const d = Math.hypot(wx - (tl.x + playerSize/2), wy - (tl.y + playerSize/2));
+                if (d < bestDist) { bestDist = d; best = op; }
+            });
+            if (best) socket.emit('pokeAt', { targetId: best.id, feed: currentFeed });   // miss = nothing sent, no poke wasted
         }
 
         function renderLobby() {
@@ -426,22 +489,53 @@
             document.getElementById('lobby-volunteer').style.display = isHost ? 'none' : 'block';
         }
 
-        // Load the three bundled sample rooms onto the three cameras (host quick-start).
+        // While the name-entry card is up, drop the standings BELOW it (centered) instead of the
+        // top-right corner, so the leaderboard never covers the name input. Once joined it returns
+        // to the corner of the lobby screen.
+        function layoutLobbyScoreboard() {
+            const sb = document.getElementById('scoreboard');
+            const modal = document.getElementById('join-modal');
+            const entryOpen = modal && getComputedStyle(modal).display !== 'none';
+            if (entryOpen && sb.style.display !== 'none') {
+                const r = modal.getBoundingClientRect();
+                sb.style.left = '50%'; sb.style.right = 'auto';
+                sb.style.transform = 'translateX(-50%)';
+                sb.style.top = (r.bottom + 14) + 'px';
+            } else {
+                // Revert to the CSS-defined top-right corner.
+                sb.style.left = ''; sb.style.right = '';
+                sb.style.transform = ''; sb.style.top = '';
+            }
+        }
+
+        // Load the three bundled Taco Bell scenes onto the three cameras (host quick-start).
         function loadSampleRooms() {
-            [{ feed: 0, file: 'dining' }, { feed: 1, file: 'living' }, { feed: 2, file: 'backyard' }].forEach(({ feed, file }) => {
+            const set = [
+                { feed: 0, file: '/scenes/dining.png' },
+                { feed: 1, file: '/scenes/drivethru.png' },
+                { feed: 2, file: '/scenes/kitchen.png' }
+            ];
+            set.forEach(({ feed, file }) => {
                 const img = new Image();
                 img.onload = () => {
+                    // Downscale before encoding so the photo travels over the socket and phones
+                    // don't choke (the kitchen shot is ~2700px wide at source).
+                    const MAX = 1600;
+                    let w = img.width || 1280, h = img.height || 720;
+                    if (w > MAX || h > MAX) { const s = Math.min(MAX / w, MAX / h); w = Math.round(w * s); h = Math.round(h * s); }
                     const off = document.createElement('canvas');
-                    off.width = img.width || 1280; off.height = img.height || 720;
-                    off.getContext('2d').drawImage(img, 0, 0, off.width, off.height);
+                    off.width = w; off.height = h;
+                    off.getContext('2d').drawImage(img, 0, 0, w, h);
                     const dataUrl = off.toDataURL('image/jpeg', 0.85);
                     const fin = new Image(); fin.onload = () => { feeds[feed].img = fin; }; fin.src = dataUrl;
                     socket.emit('hostMap', { feedIndex: feed, dataUrl });
                 };
-                img.src = '/rooms/' + file + '.svg';
+                img.src = file;
             });
-            showToast('🎲 Loaded 3 sample rooms onto the cameras');
-            toggleSettingsModal(false);
+            // Confirm on the button itself (the toast sits behind the modal) and keep settings
+            // open so the host can pick a seeker and hit START without reopening.
+            const b = document.getElementById('sampleBtn');
+            if (b) { b.innerText = '✓ TACO BELL SCENES LOADED'; setTimeout(() => { b.innerText = '🌮 USE TACO BELL SCENES'; }, 2500); }
         }
 
         function resetGame() {
@@ -560,18 +654,16 @@
             img.src = dataUrl;
         });
 
-        socket.on('switchFeed', ({ feedIndex }) => {
-            currentFeed = feedIndex;
-            document.getElementById('cam-title').innerText = feeds[currentFeed].name;
-            camera = { x: 0, y: 0, scale: 1 };
-        });
-
         function changeCamera(dir) {
-            if (!(isHost || socket.id === seekerSocketId)) return;   // only host/seeker swap feeds (no hider self-desync)
             currentFeed = (currentFeed + dir + feeds.length) % feeds.length;
-            document.getElementById('cam-title').innerText = feeds[currentFeed].name;
             camera = { x: 0, y: 0, scale: 1 };
-            socket.emit('hostSwitchFeed', { feedIndex: currentFeed });
+            // Seeker: just changes which room they're watching. Everyone else: this is the room
+            // they're hiding in — broadcast it immediately so the seeker only sees them in that room.
+            if (socket.id !== seekerSocketId) {
+                myFeed = currentFeed;
+                if (isJoined) { const n = selfNorm(); socket.emit('playerUpdate', { nx: n.nx, ny: n.ny, pose: currentIdx, color: activeColor, feed: myFeed }); }
+            }
+            setCamTitle();
         }
 
         const playerSize = 75;
@@ -710,7 +802,7 @@
         }
 
         function loop() {
-            if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
+            if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); const n = selfNorm(); socket.emit('playerUpdate', { nx: n.nx, ny: n.ny, pose: currentIdx, color: activeColor, feed: myFeed }); }
 
             const activeMap = feeds[currentFeed].img;
             if (!activeMap) {
@@ -775,12 +867,14 @@
             Object.values(otherPlayers).forEach(op => {
                 if (op.id === socket.id) return;
                 if (op.id === seekerSocketId) return;   // the seeker is the camera, not a blob in the room
+                if ((op.feed || 0) !== currentFeed) return;   // only show hiders in the room I'm viewing
                 const opPose = poses[op.pose || 0];
+                const tl = normToTopLeft(op.nx, op.ny, op.feed || 0);   // their scene spot -> my screen
                 let slide = { x:0, y:0, rot:0 };
                 if (op.isDead) { if (!deadAnimAt[op.id]) deadAnimAt[op.id] = Date.now(); slide = deadSlide(Date.now() - deadAnimAt[op.id]); }
                 else if (deadAnimAt[op.id]) delete deadAnimAt[op.id];
                 ctx.save();
-                ctx.translate(op.x + playerSize/2 + slide.x, op.y + playerSize/2 + slide.y);
+                ctx.translate(tl.x + playerSize/2 + slide.x, tl.y + playerSize/2 + slide.y);
                 ctx.rotate(slide.rot);
                 ctx.translate(-playerSize/2, -playerSize/2);
                 const av = otherAvatars[op.id];

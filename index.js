@@ -16,7 +16,6 @@ const lastReactionTimes = {};
 const feedMaps = {};      // feedIndex -> dataUrl, so late joiners receive loaded photos
 const avatars = {};       // socket.id -> painted-avatar dataUrl (the camouflage other players see)
 const playerState = {};   // token -> { isDead }; survives a refresh so reconnects restore state
-let currentFeed = 0;      // active camera, kept server-side for late joiners
 let gamePhase = 'LOBBY';
 let seekerSocketId = null; // current socket of the seeker
 let seekerToken = null;    // identity-stable seeker (survives reconnects)
@@ -84,7 +83,6 @@ io.on('connection', (socket) => {
     Object.entries(feedMaps).forEach(([feedIndex, dataUrl]) => {
         socket.emit('loadMap', { feedIndex: Number(feedIndex), dataUrl });
     });
-    socket.emit('switchFeed', { feedIndex: currentFeed });
 
     // Replay painted disguises so the seeker / latecomers see existing camouflage.
     Object.entries(avatars).forEach(([id, avatar]) => socket.emit('playerAvatar', { id, avatar }));
@@ -96,10 +94,13 @@ io.on('connection', (socket) => {
             id: socket.id,
             token,
             name: playerData.name,
-            x: playerData.x,
-            y: playerData.y,
+            // Positions are stored normalized (0..1 of the background image), so every
+            // device renders the hider at the same spot on the scene regardless of screen size.
+            nx: typeof playerData.nx === 'number' ? playerData.nx : 0.5,
+            ny: typeof playerData.ny === 'number' ? playerData.ny : 0.5,
             color: playerData.color,
             pose: playerData.pose,
+            feed: playerData.feed || 0,   // which room this hider is hiding in
             isDead: restored.isDead
         };
         playerState[token] = { isDead: restored.isDead };
@@ -114,10 +115,11 @@ io.on('connection', (socket) => {
 
     socket.on('playerUpdate', (data) => {
         if (players[socket.id]) {
-            players[socket.id].x = data.x;
-            players[socket.id].y = data.y;
+            if (typeof data.nx === 'number') players[socket.id].nx = data.nx;
+            if (typeof data.ny === 'number') players[socket.id].ny = data.ny;
             players[socket.id].pose = data.pose;
             players[socket.id].color = data.color;
+            if (typeof data.feed === 'number') players[socket.id].feed = data.feed;
             socket.broadcast.emit('updatePlayers', players);
         }
     });
@@ -142,13 +144,6 @@ io.on('connection', (socket) => {
         feedMaps[feedIndex] = dataUrl;   // remember it for late joiners
         socket.broadcast.emit('loadMap', { feedIndex, dataUrl });
         console.log(`🗺️  Map stored + broadcast on feed ${feedIndex}`);
-    });
-
-    socket.on('hostSwitchFeed', ({ feedIndex }) => {
-        // Host sets up cameras; during SEEKING the seeker also swaps between them.
-        if (socket.id !== hostSocketId && socket.id !== seekerSocketId) return;
-        currentFeed = feedIndex;
-        socket.broadcast.emit('switchFeed', { feedIndex });
     });
 
     socket.on('claimHost', (token) => {
@@ -230,18 +225,13 @@ io.on('connection', (socket) => {
         }, 1000);
     });
 
-    socket.on('pokeAt', ({ x, y }) => {
+    socket.on('pokeAt', ({ targetId, feed }) => {
         if (socket.id !== seekerSocketId || gamePhase !== 'SEEKING' || seekerPokesLeft <= 0) return;
-        if (typeof x !== 'number' || typeof y !== 'number') return;
-        // Find the nearest live hider whose center is within poke range of the aimed spot.
-        const POKE_RADIUS = 55;
-        let best = null, bestDist = POKE_RADIUS;
-        Object.values(players).forEach(p => {
-            if (p.id === seekerSocketId || p.isDead) return;
-            const d = Math.hypot(x - (p.x + 37.5), y - (p.y + 37.5));   // 37.5 = playerSize/2
-            if (d < bestDist) { bestDist = d; best = p; }
-        });
-        if (!best) return;   // miss — no poke consumed, so pokes are never wasted
+        // The seeker hit-tests locally against where it actually drew the hider (so a poke
+        // that visually lands always counts). The server just validates the target.
+        const best = players[targetId];
+        if (!best || best.id === seekerSocketId || best.isDead) return;   // miss costs no poke
+        if ((best.feed || 0) !== feed) return;   // target must be in the room the seeker is viewing
         seekerPokesLeft--;
         best.isDead = true;
         if (best.token) playerState[best.token] = { isDead: true };
