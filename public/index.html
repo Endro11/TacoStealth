@@ -104,6 +104,15 @@
         const socket = io();
         socket.on('connect', () => { console.log('Connected to server!'); });
 
+        let otherPlayers = {};
+        socket.on('updatePlayers', (players) => { otherPlayers = players; });
+        socket.on('triggerPickleSlide', () => {
+            isDead = true;
+            document.getElementById('modeBtn').innerText = "💀 DEAD";
+            document.getElementById('modeBtn').style.background = "#000";
+            updateUI();
+        });
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
@@ -120,6 +129,7 @@
         let camera = { x: 0, y: 0, scale: 1 };
         let showBrushPreview = false, brushPreviewTimeout;
         let whistlePulseStart = 0;
+        let lastEmitTime = 0;
 
         let isJoined = false;
         let isPaint = true; 
@@ -132,6 +142,7 @@
             isJoined = true;
             isPaint = false; 
             updateUI();
+            socket.emit('joinGame', { name: playerName, x: player.x, y: player.y, color: activeColor, pose: currentIdx });
         }
 
         function toggleSettingsModal(show) { document.getElementById('settings-modal').style.display = show ? 'flex' : 'none'; }
@@ -244,6 +255,17 @@
                 document.getElementById('brightnessSlider').value = cLight; applyColor(); isPaint=true; isDrop=false; updateUI(); 
             } 
         };
+        canvas.onclick = (e) => {
+            if (isDead || isPaint || isDrop || !isJoined) return;
+            const wx = (e.clientX - camera.x) / camera.scale, wy = (e.clientY - camera.y) / camera.scale;
+            Object.values(otherPlayers).forEach(op => {
+                if (op.id === socket.id) return;
+                if (wx >= op.x && wx <= op.x + playerSize && wy >= op.y && wy <= op.y + playerSize) {
+                    socket.emit('pokePlayer', op.id);
+                }
+            });
+        };
+
         function draw(sx, sy) {
             const wx = (sx - camera.x)/camera.scale, wy = (sy - camera.y)/camera.scale;
             if(wx >= player.x && wx <= player.x+playerSize && wy >= player.y && wy <= player.y+playerSize) {
@@ -263,6 +285,8 @@
             if(!isPaint && !isDrop && !isDead && isJoined) { player.x+=joyV.x*4/camera.scale; player.y+=joyV.y*4/camera.scale; }
             
             if(isDead) { deadYOffset += 0.5; deadXOffset = Math.sin(Date.now() / 150) * 1.5; }
+
+            if(isJoined && Date.now() - lastEmitTime > 50) { lastEmitTime = Date.now(); socket.emit('playerUpdate', { x: player.x, y: player.y, pose: currentIdx, color: activeColor }); }
 
             ctx.fillStyle = '#050508'; ctx.fillRect(0,0,canvas.width,canvas.height);
             ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.scale, camera.scale);
@@ -309,7 +333,28 @@
                 ctx.fillText(playerName, 37.5, -7);
             }
             
-            ctx.restore(); ctx.restore(); 
+            ctx.restore();
+
+            Object.values(otherPlayers).forEach(op => {
+                if (op.id === socket.id) return;
+                const opPose = poses[op.pose || 0];
+                ctx.save();
+                ctx.translate(op.x + playerSize/2, op.y + playerSize/2);
+                ctx.translate(-playerSize/2, -playerSize/2);
+                ctx.fillStyle = op.color || '#888';
+                ctx.fill(opPose.path);
+                ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(-2, -18, playerSize + 4, 16);
+                ctx.fillStyle = '#FFF'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+                ctx.fillText(op.name, playerSize / 2, -5);
+                if (op.isDead) {
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+                    ctx.beginPath(); ctx.moveTo(27,10); ctx.lineTo(35,16); ctx.moveTo(35,10); ctx.lineTo(27,16); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(39,10); ctx.lineTo(47,16); ctx.moveTo(47,10); ctx.lineTo(39,16); ctx.stroke();
+                }
+                ctx.restore();
+            });
+
+            ctx.restore();
 
             if(showBrushPreview && !isDead) { ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/3, document.getElementById('brushSize').value*camera.scale, 0, 7); ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill(); }
             if(isDrop && dropTarget && !isDead) {
