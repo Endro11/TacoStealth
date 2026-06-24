@@ -72,6 +72,7 @@
         <div class="setting-row"><span>Seeker Pokes:</span> <input type="number" id="pokeCount" value="5"></div>
         <div class="setting-row"><span>Seeker Name:</span> <input type="text" id="seekerName" placeholder="NAME" maxlength="12" style="width:80px; text-transform:uppercase; font-weight:bold;"></div>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
+        <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
     </div>
 
@@ -191,6 +192,11 @@
             const hideTime = parseInt(document.getElementById('hideTime').value) || 45;
             const seekTime = parseInt(document.getElementById('seekTime').value) || 120;
             socket.emit('startGame', { seekerName, hideTime, seekTime });
+            toggleSettingsModal(false);
+        }
+
+        function resetGame() {
+            socket.emit('resetGame');
             toggleSettingsModal(false);
         }
         

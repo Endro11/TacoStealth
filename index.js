@@ -60,6 +60,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('resetGame', () => {
+        clearInterval(gameTimer);
+        gamePhase = 'LOBBY';
+        timeLeft = 0;
+        seekerSocketId = null;
+        Object.values(players).forEach(p => { p.isDead = false; });
+        io.emit('updatePlayers', players);
+        broadcastGameState();
+        console.log('🔄 Game reset to LOBBY.');
+    });
+
     socket.on('startGame', (data) => {
         const seeker = Object.values(players).find(p => p.name === data.seekerName.toUpperCase());
         seekerSocketId = seeker ? seeker.id : null;
