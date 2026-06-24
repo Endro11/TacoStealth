@@ -87,7 +87,13 @@
         <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
         <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
         <div class="setting-row"><span>Seeker Pokes:</span> <input type="number" id="pokeCount" value="5"></div>
-        <div class="setting-row"><span>Seeker Name:</span> <input type="text" id="seekerName" placeholder="NAME" maxlength="12" style="width:80px; text-transform:uppercase; font-weight:bold;"></div>
+        <div class="setting-row">
+            <span>Seeker:</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input type="text" id="seekerName" placeholder="NAME" maxlength="12" style="width:70px; text-transform:uppercase; font-weight:bold; padding:5px;">
+                <button onclick="randomizeSeeker()" style="width:38px; padding:6px; background:#37474f; font-size:1.1em;" title="Pick random">🎲</button>
+            </div>
+        </div>
         <button onclick="startGame()" style="width: 100%; background: #c62828; padding: 12px; color:white; font-size:1em;">🚀 START GAME</button>
         <button onclick="resetGame()" style="width: 100%; background: #555; padding: 10px;">🔄 RESET TO LOBBY</button>
         <button onclick="toggleSettingsModal(false)" style="width: 100%; background: #4CAF50; padding: 10px;">SAVE & CLOSE</button>
@@ -112,6 +118,7 @@
     </div>
 
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
+    <div id="poke-counter" style="display:none; position:absolute; top:50px; left:15px; z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">💀 POKES: <span id="poke-count">5</span></div>
 
     <div id="scoreboard">
         <div class="sb-title">🏆 STANDINGS</div>
@@ -184,6 +191,10 @@
             recLight.classList.toggle('recording', state.phase === 'HIDING' || state.phase === 'SEEKING');
             document.getElementById('scoreboard').style.display = state.phase === 'LOBBY' ? 'flex' : 'none';
             document.getElementById('seekerBadge').style.display = (isSeeker && state.phase === 'SEEKING') ? 'inline-block' : 'none';
+            const pokeCounter = document.getElementById('poke-counter');
+            pokeCounter.style.display = (isSeeker && state.phase === 'SEEKING') ? 'block' : 'none';
+            document.getElementById('poke-count').innerText = state.pokesLeft ?? 0;
+            if (isSeeker && state.phase === 'SEEKING' && isPaint) { isPaint = false; updateUI(); }
         });
 
         socket.on('updateScores', (scoreData) => {
@@ -245,8 +256,16 @@
             const seekerName = document.getElementById('seekerName').value.trim().toUpperCase();
             const hideTime = parseInt(document.getElementById('hideTime').value) || 45;
             const seekTime = parseInt(document.getElementById('seekTime').value) || 120;
-            socket.emit('startGame', { seekerName, hideTime, seekTime });
+            const pokeCount = parseInt(document.getElementById('pokeCount').value) || 5;
+            socket.emit('startGame', { seekerName, hideTime, seekTime, pokeCount });
             toggleSettingsModal(false);
+        }
+
+        function randomizeSeeker() {
+            const allNames = Object.values(otherPlayers).map(p => p.name);
+            if (isJoined && !allNames.includes(playerName)) allNames.push(playerName);
+            if (allNames.length === 0) return;
+            document.getElementById('seekerName').value = allNames[Math.floor(Math.random() * allNames.length)];
         }
 
         function resetGame() {
@@ -393,11 +412,15 @@
             document.getElementById('joystick-zone').style.display = (isJoined && !isPaint && !isDrop && !isDead) ? 'block' : 'none';
         }
 
+        const seekerReticle = { x: 0, y: 0, lockTarget: null, lockStartTime: 0, pokeCooldownUntil: 0 };
+        canvas.onmousemove = (e) => { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; };
+
         let isPanning = false, initialDist = 0, initialScale = 1, lastPan = {x:0, y:0};
         canvas.ontouchstart = (e) => {
             if(e.touches.length === 2) { isPanning=true; let t1=e.touches[0], t2=e.touches[1]; initialDist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY); initialScale=camera.scale; lastPan={x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
             else if(isPaint && !isDead) draw(e.touches[0].clientX, e.touches[0].clientY);
             else if(isDrop && !isDead) dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
         };
         canvas.ontouchmove = (e) => {
             if(isPanning && e.touches.length === 2) {
@@ -405,6 +428,7 @@
                 camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy};
             } else if(isPaint && !isDead) { e.preventDefault(); draw(e.touches[0].clientX, e.touches[0].clientY); }
             else if(isDrop && !isDead) { e.preventDefault(); dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
         };
         canvas.ontouchend = () => { 
             isPanning=false; 
@@ -415,16 +439,6 @@
                 cHue = Math.round(h * 360); cSat = Math.round(s * 100); cLight = Math.round(l * 100);
                 document.getElementById('brightnessSlider').value = cLight; applyColor(); isPaint=true; isDrop=false; updateUI(); 
             } 
-        };
-        canvas.onclick = (e) => {
-            if (isDead || isPaint || isDrop || !isJoined || gamePhase !== 'SEEKING' || socket.id !== seekerSocketId) return;
-            const wx = (e.clientX - camera.x) / camera.scale, wy = (e.clientY - camera.y) / camera.scale;
-            Object.values(otherPlayers).forEach(op => {
-                if (op.id === socket.id) return;
-                if (wx >= op.x && wx <= op.x + playerSize && wy >= op.y && wy <= op.y + playerSize) {
-                    socket.emit('pokePlayer', op.id);
-                }
-            });
         };
 
         function draw(sx, sy) {
@@ -540,6 +554,59 @@
 
             ctx.fillStyle = 'rgba(0,0,0,0.06)';
             for(let i=0; i<canvas.height; i+=3) ctx.fillRect(0, i, canvas.width, 1);
+
+            if (gamePhase === 'SEEKING' && socket.id === seekerSocketId) {
+                const now = Date.now();
+                const rx = seekerReticle.x, ry = seekerReticle.y;
+                const rwx = (rx - camera.x) / camera.scale, rwy = (ry - camera.y) / camera.scale;
+                const cooldownActive = now < seekerReticle.pokeCooldownUntil;
+
+                if (!cooldownActive) {
+                    let found = null;
+                    Object.values(otherPlayers).forEach(op => {
+                        if (op.id === socket.id || op.isDead) return;
+                        if (Math.hypot(rwx - (op.x + playerSize/2), rwy - (op.y + playerSize/2)) < 58) found = op.id;
+                    });
+                    if (found) {
+                        if (seekerReticle.lockTarget !== found) { seekerReticle.lockTarget = found; seekerReticle.lockStartTime = now; }
+                        if (now - seekerReticle.lockStartTime >= 1500) {
+                            socket.emit('pokePlayer', seekerReticle.lockTarget);
+                            seekerReticle.lockTarget = null; seekerReticle.pokeCooldownUntil = now + 2000;
+                        }
+                    } else { seekerReticle.lockTarget = null; }
+                } else { seekerReticle.lockTarget = null; }
+
+                const locked = seekerReticle.lockTarget !== null;
+                const lockProg = locked ? Math.min(1, (now - seekerReticle.lockStartTime) / 1500) : 0;
+                const coolProg = cooldownActive ? 1 - (seekerReticle.pokeCooldownUntil - now) / 2000 : 1;
+                const col = locked ? `rgba(255,${Math.floor(60*(1-lockProg))},${Math.floor(60*(1-lockProg))},1)` : cooldownActive ? 'rgba(255,200,0,0.6)' : 'rgba(255,255,255,0.82)';
+
+                ctx.save();
+                ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+                const arm = 20, gap = 11;
+                ctx.beginPath();
+                ctx.moveTo(rx-arm-gap,ry); ctx.lineTo(rx-gap,ry);
+                ctx.moveTo(rx+gap,ry); ctx.lineTo(rx+arm+gap,ry);
+                ctx.moveTo(rx,ry-arm-gap); ctx.lineTo(rx,ry-gap);
+                ctx.moveTo(rx,ry+gap); ctx.lineTo(rx,ry+arm+gap);
+                ctx.stroke();
+                const b=13, bl=5;
+                ctx.lineWidth=2; ctx.beginPath();
+                ctx.moveTo(rx-b,ry-b+bl); ctx.lineTo(rx-b,ry-b); ctx.lineTo(rx-b+bl,ry-b);
+                ctx.moveTo(rx+b-bl,ry-b); ctx.lineTo(rx+b,ry-b); ctx.lineTo(rx+b,ry-b+bl);
+                ctx.moveTo(rx-b,ry+b-bl); ctx.lineTo(rx-b,ry+b); ctx.lineTo(rx-b+bl,ry+b);
+                ctx.moveTo(rx+b-bl,ry+b); ctx.lineTo(rx+b,ry+b); ctx.lineTo(rx+b,ry+b-bl);
+                ctx.stroke();
+                if (locked && lockProg > 0) {
+                    ctx.strokeStyle='#ff2222'; ctx.lineWidth=3;
+                    ctx.beginPath(); ctx.arc(rx,ry,22,-Math.PI/2,-Math.PI/2+lockProg*Math.PI*2); ctx.stroke();
+                }
+                if (cooldownActive) {
+                    ctx.strokeStyle='rgba(255,200,0,0.55)'; ctx.lineWidth=2;
+                    ctx.beginPath(); ctx.arc(rx,ry,22,-Math.PI/2,-Math.PI/2+coolProg*Math.PI*2); ctx.stroke();
+                }
+                ctx.restore();
+            }
 
             requestAnimationFrame(loop);
         }

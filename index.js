@@ -13,13 +13,14 @@ const scores = {};
 const lastReactionTimes = {};
 let gamePhase = 'LOBBY';
 let seekerSocketId = null;
+let seekerPokesLeft = 0;
 let gameTimer = null;
 let timeLeft = 0;
 let lastHideTime = 45;
 let lastSeekTime = 120;
 
 function broadcastGameState() {
-    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
+    io.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, pokesLeft: seekerPokesLeft });
 }
 
 function broadcastScores() {
@@ -60,7 +61,7 @@ function checkReveal() {
 io.on('connection', (socket) => {
     console.log('🟢 New connection ID:', socket.id);
 
-    socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId });
+    socket.emit('gameState', { phase: gamePhase, timeLeft, seekerSocketId, pokesLeft: seekerPokesLeft });
     socket.emit('updateScores', Object.values(scores));
 
     socket.on('joinGame', (playerData) => {
@@ -108,6 +109,7 @@ io.on('connection', (socket) => {
         gamePhase = 'LOBBY';
         timeLeft = 0;
         seekerSocketId = null;
+        seekerPokesLeft = 0;
         Object.values(players).forEach(p => { p.isDead = false; });
         io.emit('updatePlayers', players);
         broadcastGameState();
@@ -118,6 +120,7 @@ io.on('connection', (socket) => {
     socket.on('startGame', (data) => {
         const seeker = Object.values(players).find(p => p.name === data.seekerName.toUpperCase());
         seekerSocketId = seeker ? seeker.id : null;
+        seekerPokesLeft = data.pokeCount || 5;
         lastHideTime = data.hideTime || 45;
         lastSeekTime = data.seekTime || 120;
 
@@ -127,7 +130,7 @@ io.on('connection', (socket) => {
         gamePhase = 'HIDING';
         timeLeft = lastHideTime;
         broadcastGameState();
-        console.log(`🙈 HIDING phase! Seeker: ${data.seekerName}, Hide: ${lastHideTime}s`);
+        console.log(`🙈 HIDING phase! Seeker: ${data.seekerName}, Hide: ${lastHideTime}s, Pokes: ${seekerPokesLeft}`);
 
         clearInterval(gameTimer);
         gameTimer = setInterval(() => {
@@ -160,11 +163,14 @@ io.on('connection', (socket) => {
 
     socket.on('pokePlayer', (targetId) => {
         if (socket.id !== seekerSocketId) return;
+        if (seekerPokesLeft <= 0) return;
         if (players[targetId] && gamePhase === 'SEEKING') {
+            seekerPokesLeft--;
             players[targetId].isDead = true;
-            console.log(`💀 ${players[targetId].name} got poked by seeker!`);
+            console.log(`💀 ${players[targetId].name} got poked! (${seekerPokesLeft} pokes left)`);
             io.emit('updatePlayers', players);
             io.to(targetId).emit('triggerPickleSlide');
+            broadcastGameState();
             checkReveal();
         }
     });
