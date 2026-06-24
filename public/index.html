@@ -32,7 +32,10 @@
         #brushLabel { color: #aaa; font-size: 11px; font-family: monospace; background: #111; padding: 4px; border-radius: 4px; min-width: 28px; text-align: center; }
         #brushSize { width: 100%; margin: 0; }
         
-        .modal { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); background: rgba(20,20,25,0.98); padding: 20px; border-radius: 12px; border: 1px solid #555; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 30; box-shadow: 0 10px 40px rgba(0,0,0,0.9); width: 280px; color: white; font-family: sans-serif; }
+        .modal { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); background: rgba(20,20,25,0.98); padding: 20px; border-radius: 12px; border: 1px solid #555; display: flex; flex-direction: column; align-items: center; gap: 15px; z-index: 30; box-shadow: 0 10px 40px rgba(0,0,0,0.9); width: 280px; max-height: 90vh; overflow-y: auto; color: white; font-family: sans-serif; }
+        /* Standings mounted inside the name card flow naturally below the input (no overlap). */
+        #scoreboard.in-entry { position: static; top: auto; right: auto; bottom: auto; left: auto; transform: none; min-width: 0; width: 100%; box-shadow: none; margin: 4px 0 0; background: rgba(0,0,0,0.25); }
+        #scoreboard.in-entry #score-list { max-height: 26vh; }
         .modal-title { font-weight: bold; font-size: 1.2em; border-bottom: 2px solid #444; padding-bottom: 5px; width: 100%; text-align: center; }
         .setting-row { display: flex; justify-content: space-between; width: 100%; align-items: center; }
         .setting-row input { width: 60px; padding: 5px; border-radius: 4px; border: none; text-align: center; font-weight: bold; }
@@ -108,7 +111,7 @@
         <div class="modal-title">GAME SETTINGS</div>
         <div class="setting-row"><span>Hide Time (sec):</span> <input type="number" id="hideTime" value="45"></div>
         <div class="setting-row"><span>Seek Time (sec):</span> <input type="number" id="seekTime" value="120"></div>
-        <div class="setting-row"><span>Seeker Pokes:</span> <input type="number" id="pokeCount" value="5"></div>
+        <div class="setting-row"><span>Wrong pokes allowed:</span> <input type="number" id="pokeCount" value="5"></div>
         <div class="setting-row">
             <span>Seeker:</span>
             <div style="display:flex; gap:6px; align-items:center;">
@@ -161,7 +164,7 @@
     </div>
 
     <div id="phase-hud"><span id="phase-label"></span><span id="timer-hud"></span></div>
-    <div id="poke-counter" style="display:none; position:absolute; top:calc(48px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">💀 POKES: <span id="poke-count">5</span></div>
+    <div id="poke-counter" style="display:none; position:absolute; top:calc(48px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); z-index:10; font-family:monospace; color:#ff4444; font-size:1em; font-weight:bold; text-shadow:0 0 8px rgba(255,60,60,0.6), 1px 1px 2px #000; pointer-events:none;">❌ WRONG POKES LEFT: <span id="poke-count">5</span></div>
 
     <div id="volunteer-toast">🙋 <span id="volunteer-name">PLAYER</span> wants to be seeker!</div>
 
@@ -319,7 +322,7 @@
                 currentFeed = 0; camera = { x: 0, y: 0, scale: 1 };
                 seekerReticle.x = canvas.width/2; seekerReticle.y = canvas.height/2; seekerReticle.pokeCooldownUntil = 0;
                 setCamTitle();
-                showToast('👁️ Swap cameras (NEXT CAM) to hunt for hiders in each room');
+                showToast('👁️ Click a suspicious blob to poke it (mobile: press &amp; hold ~1s). NEXT CAM swaps rooms.');
             }
 
             // In-room nav: only the host sees settings; only host/seeker can swap cameras.
@@ -487,8 +490,8 @@
             if (gamePhase !== 'SEEKING' || socket.id !== seekerSocketId) return;
             const now = Date.now();
             if (now < seekerReticle.pokeCooldownUntil) return;
-            seekerReticle.pokeCooldownUntil = now + 1000;
-            const btn = document.getElementById('pokeBtn'); btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 1000);
+            seekerReticle.pokeCooldownUntil = now + 700;
+            const btn = document.getElementById('pokeBtn'); if (btn) { btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 700); }
 
             // Hit-test on the seeker's own screen, against exactly where each hider is drawn here.
             // This is what makes "poke right on the hider" actually land — no cross-device guessing.
@@ -501,12 +504,14 @@
                 const d = Math.hypot(wx - (tl.x + playerSize/2), wy - (tl.y + playerSize/2));
                 if (d < bestDist) { bestDist = d; best = op; }
             });
-            if (best) socket.emit('pokeAt', { targetId: best.id, feed: currentFeed });   // server confirms via pokeResult
-            else showToast('🫥 Nothing there — no poke used');   // miss costs nothing
+            // Always report; the server decides: a correct catch is free, a wrong poke costs one.
+            socket.emit('pokeAt', { targetId: best ? best.id : null, feed: currentFeed });
         }
-        // Server confirms a catch: clear feedback so a correct poke never feels like a miss.
-        socket.on('pokeResult', ({ hit, name }) => {
-            if (hit) { showToast('🎯 GOT ' + name + '! +1'); flashScreen('rgba(76,175,80,0.28)'); }
+        // Hit = free catch; miss = a spent poke. Clear feedback either way.
+        socket.on('pokeResult', ({ hit, name, pokesLeft, out }) => {
+            if (hit) { showToast('🎯 GOT ' + name + '! (free catch)'); flashScreen('rgba(76,175,80,0.28)'); }
+            else if (out) { showToast('🚫 Out of wrong pokes — catch carefully!'); }
+            else { showToast('❌ Missed — that cost a poke (' + pokesLeft + ' left)'); flashScreen('rgba(198,40,40,0.20)'); }
         });
 
         function renderLobby() {
@@ -529,17 +534,14 @@
             const modal = document.getElementById('join-modal');
             const entryOpen = modal && getComputedStyle(modal).display !== 'none';
             if (entryOpen) {
-                // Name card is up: pin standings to the bottom-center so they sit clearly BELOW it
-                // and can never overlap the name input (no measurement to get wrong).
-                sb.style.top = 'auto';
-                sb.style.bottom = 'calc(14px + env(safe-area-inset-bottom))';
-                sb.style.left = '50%'; sb.style.right = 'auto';
-                sb.style.transform = 'translateX(-50%)';
-                sb.style.maxWidth = '92vw';
+                // Name card is up: mount the standings INSIDE the card so they flow directly below
+                // the name input (the .in-entry class makes it static/full-width — see CSS).
+                if (sb.parentElement !== modal) modal.appendChild(sb);
+                sb.classList.add('in-entry');
             } else {
-                // Revert to the CSS-defined top-right corner (joined lobby view).
-                sb.style.top = ''; sb.style.bottom = ''; sb.style.left = '';
-                sb.style.right = ''; sb.style.transform = ''; sb.style.maxWidth = '';
+                // Float back out to the lobby's top-right corner.
+                if (sb.parentElement !== document.body) document.body.appendChild(sb);
+                sb.classList.remove('in-entry');
             }
         }
 
@@ -736,6 +738,20 @@
 
         const seekerReticle = { x: 0, y: 0, lockTarget: null, lockStartTime: 0, pokeCooldownUntil: 0 };
 
+        // Mobile press-and-hold-to-poke: hold ~1s on a spot to fire (desktop just clicks). Drifting
+        // off the spot cancels it. A progress ring (drawn in the loop) shows the hold filling.
+        let pokeHold = null;   // { x, y, start, timer }
+        function startPokeHold(x, y) {
+            cancelPokeHold();
+            seekerReticle.x = x; seekerReticle.y = y;
+            pokeHold = { x, y, start: Date.now(), timer: setTimeout(() => { const ph = pokeHold; pokeHold = null; if (ph) seekerPoke(); }, 1000) };
+        }
+        function updatePokeHold(x, y) {
+            seekerReticle.x = x; seekerReticle.y = y;
+            if (pokeHold && Math.hypot(x - pokeHold.x, y - pokeHold.y) > 28) cancelPokeHold();
+        }
+        function cancelPokeHold() { if (pokeHold) { clearTimeout(pokeHold.timer); pokeHold = null; } }
+
         // ---- Desktop mouse controls (touch is handled separately below) ----
         // Left-drag = paint / move (drag the avatar) / eyedrop depending on mode.
         // Right-drag or Shift+drag = pan. Wheel = zoom toward cursor.
@@ -754,7 +770,7 @@
             if(isDead) return;
             if(isPaint) paintAt(e.clientX, e.clientY);
             else if(isDrop) dropTarget = { x: e.clientX, y: e.clientY };
-            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; }
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.clientX; seekerReticle.y = e.clientY; seekerPoke(); }   // click = poke
             else if(isJoined) grabAvatar(e.clientX, e.clientY);
         };
         canvas.onmouseup = () => {
@@ -780,7 +796,7 @@
             if(e.touches.length === 2) { isPanning=true; let t1=e.touches[0], t2=e.touches[1]; initialDist=Math.hypot(t1.clientX-t2.clientX, t1.clientY-t2.clientY); initialScale=camera.scale; lastPan={x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
             else if(isPaint && !isDead) paintAt(e.touches[0].clientX, e.touches[0].clientY);
             else if(isDrop && !isDead) dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY};
-            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); startPokeHold(e.touches[0].clientX, e.touches[0].clientY); }   // hold = poke
             else if(isJoined && !isDead) grabAvatar(e.touches[0].clientX, e.touches[0].clientY);
         };
         canvas.ontouchmove = (e) => {
@@ -789,11 +805,12 @@
                 camera.x = cx - (cx-camera.x)*sd + (cx-lastPan.x); camera.y = cy - (cy-camera.y)*sd + (cy-lastPan.y); camera.scale = s; lastPan={x:cx, y:cy};
             } else if(isPaint && !isDead) { e.preventDefault(); paintAt(e.touches[0].clientX, e.touches[0].clientY); }
             else if(isDrop && !isDead) { e.preventDefault(); dropTarget = {x:e.touches[0].clientX, y:e.touches[0].clientY}; }
-            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); seekerReticle.x = e.touches[0].clientX; seekerReticle.y = e.touches[0].clientY; }
+            else if(gamePhase === 'SEEKING' && socket.id === seekerSocketId) { e.preventDefault(); updatePokeHold(e.touches[0].clientX, e.touches[0].clientY); }
             else if(isJoined && !isDead && dragGrab) { e.preventDefault(); dragAvatarTo(e.touches[0].clientX, e.touches[0].clientY); }
         };
         canvas.ontouchend = () => {
             isPanning = false; dragGrab = null; paintLast = null;   // end the brush stroke
+            cancelPokeHold();   // lifting before the hold completes cancels the poke
             if(isDrop && dropTarget) { pickColorAt(dropTarget.x, dropTarget.y); isPaint = true; isDrop = false; updateUI(); }
         };
 
@@ -1004,6 +1021,14 @@
                 if (cooldownActive) {
                     ctx.strokeStyle='rgba(255,200,0,0.55)'; ctx.lineWidth=2;
                     ctx.beginPath(); ctx.arc(rx,ry,22,-Math.PI/2,-Math.PI/2+coolProg*Math.PI*2); ctx.stroke();
+                }
+                // Press-and-hold progress ring (mobile) filling toward the poke.
+                if (pokeHold) {
+                    const prog = Math.min(1, (Date.now() - pokeHold.start) / 1000);
+                    ctx.strokeStyle = 'rgba(255,235,59,0.35)'; ctx.lineWidth = 5;
+                    ctx.beginPath(); ctx.arc(pokeHold.x, pokeHold.y, 32, 0, Math.PI * 2); ctx.stroke();
+                    ctx.strokeStyle = 'rgba(255,80,80,0.95)'; ctx.lineWidth = 5;
+                    ctx.beginPath(); ctx.arc(pokeHold.x, pokeHold.y, 32, -Math.PI/2, -Math.PI/2 + prog * Math.PI * 2); ctx.stroke();
                 }
                 ctx.restore();
             }

@@ -23,6 +23,7 @@ let hostSocketId = null;   // only the host may load maps / start / reset
 let hostToken = null;
 let seekerPokesLeft = 0;
 let gameTimer = null;
+let revealTimer = null;
 let timeLeft = 0;
 let lastHideTime = 45;
 let lastSeekTime = 120;
@@ -52,15 +53,42 @@ function tallyScores() {
     broadcastScores();
 }
 
+// REVEAL holds for 15s (with a visible countdown), then the round auto-returns to the lobby.
+function enterReveal() {
+    clearInterval(gameTimer);
+    clearTimeout(revealTimer);
+    gamePhase = 'REVEAL';
+    tallyScores();
+    timeLeft = 15;
+    broadcastGameState();
+    console.log('🎉 REVEAL phase! Back to lobby in 15s.');
+    gameTimer = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) { clearInterval(gameTimer); returnToLobby(); return; }
+        broadcastGameState();
+    }, 1000);
+}
+
+function returnToLobby() {
+    clearInterval(gameTimer);
+    clearTimeout(revealTimer);
+    gamePhase = 'LOBBY';
+    timeLeft = 0;
+    seekerSocketId = null;
+    seekerToken = null;
+    seekerPokesLeft = 0;
+    Object.values(players).forEach(p => { p.isDead = false; });
+    for (const t in playerState) delete playerState[t];
+    io.emit('updatePlayers', players);
+    broadcastGameState();   // scores persist across rounds
+    console.log('🔄 Auto-returned to LOBBY after reveal.');
+}
+
 function checkReveal() {
     const hiders = Object.values(players).filter(p => p.id !== seekerSocketId);
     if (hiders.length > 0 && hiders.every(p => p.isDead)) {
-        gamePhase = 'REVEAL';
-        timeLeft = 0;
-        clearInterval(gameTimer);
-        tallyScores();
-        broadcastGameState();
-        console.log('🎉 All hiders poked! REVEAL phase.');
+        enterReveal();
+        console.log('🎉 All hiders poked!');
     }
 }
 
@@ -157,6 +185,7 @@ io.on('connection', (socket) => {
     socket.on('resetGame', () => {
         if (!isHost(socket)) return;
         clearInterval(gameTimer);
+        clearTimeout(revealTimer);
         gamePhase = 'LOBBY';
         timeLeft = 0;
         seekerSocketId = null;
@@ -172,6 +201,7 @@ io.on('connection', (socket) => {
 
     socket.on('startGame', (data) => {
         if (!isHost(socket)) return;
+        clearTimeout(revealTimer);   // cancel any pending reveal->lobby return
         const seeker = players[data.seekerId];   // selected by connection id, not name
         seekerSocketId = seeker ? seeker.id : null;
         seekerToken = seeker ? seeker.token : null;
@@ -201,12 +231,7 @@ io.on('connection', (socket) => {
                 gameTimer = setInterval(() => {
                     timeLeft--;
                     if (timeLeft <= 0) {
-                        clearInterval(gameTimer);
-                        gamePhase = 'REVEAL';
-                        timeLeft = 0;
-                        tallyScores();
-                        broadcastGameState();
-                        console.log('🎉 REVEAL phase!');
+                        enterReveal();   // tally + 15s countdown + auto-return to lobby
                         return;
                     }
                     broadcastGameState();
@@ -218,28 +243,36 @@ io.on('connection', (socket) => {
     });
 
     socket.on('pokeAt', ({ targetId, feed }) => {
-        if (socket.id !== seekerSocketId || gamePhase !== 'SEEKING' || seekerPokesLeft <= 0) return;
-        // The seeker hit-tests locally against where it actually drew the hider (so a poke
-        // that visually lands always counts). The server just validates the target.
-        const best = players[targetId];
-        if (!best || best.id === seekerSocketId || best.isDead) return;   // miss costs no poke
-        if ((best.feed || 0) !== feed) return;   // target must be in the room the seeker is viewing
-        seekerPokesLeft--;
-        best.isDead = true;
-        if (best.token) playerState[best.token] = { isDead: true };
-        // Award the catch point right away so a correct poke always scores.
-        const seeker = players[seekerSocketId];
-        if (seeker) {
-            if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
-            scores[seeker.name].catches += 1;
+        if (socket.id !== seekerSocketId || gamePhase !== 'SEEKING') return;
+        // The seeker hit-tests locally against where it drew the hider and passes the target id
+        // (or null). Poke economy is INVERTED: a correct catch is free + scores a point; only a
+        // WRONG poke (nobody there) spends one of the seeker's limited pokes.
+        const best = (targetId && players[targetId]) ? players[targetId] : null;
+        const validHit = best && best.id !== seekerSocketId && !best.isDead && (best.feed || 0) === feed;
+
+        if (validHit) {
+            best.isDead = true;
+            if (best.token) playerState[best.token] = { isDead: true };
+            const seeker = players[seekerSocketId];
+            if (seeker) {
+                if (!scores[seeker.name]) scores[seeker.name] = { name: seeker.name, survivals: 0, catches: 0 };
+                scores[seeker.name].catches += 1;
+            }
+            console.log(`💀 ${best.name} caught! (free catch, ${seekerPokesLeft} wrong-pokes left)`);
+            io.emit('updatePlayers', players);
+            io.to(best.id).emit('triggerPickleSlide');
+            io.to(seekerSocketId).emit('pokeResult', { hit: true, name: best.name, pokesLeft: seekerPokesLeft });
+            broadcastScores();
+            broadcastGameState();
+            checkReveal();
+        } else {
+            // Wrong poke. Correct catches are always allowed, but wrong guesses are limited.
+            if (seekerPokesLeft <= 0) { io.to(seekerSocketId).emit('pokeResult', { hit: false, pokesLeft: 0, out: true }); return; }
+            seekerPokesLeft--;
+            console.log(`❌ Seeker poked nothing. (${seekerPokesLeft} wrong-pokes left)`);
+            io.to(seekerSocketId).emit('pokeResult', { hit: false, pokesLeft: seekerPokesLeft });
+            broadcastGameState();
         }
-        console.log(`💀 ${best.name} got poked! (${seekerPokesLeft} pokes left)`);
-        io.emit('updatePlayers', players);
-        io.to(best.id).emit('triggerPickleSlide');
-        io.to(seekerSocketId).emit('pokeResult', { hit: true, name: best.name, pokesLeft: seekerPokesLeft });
-        broadcastScores();
-        broadcastGameState();
-        checkReveal();
     });
 
     socket.on('disconnect', () => {
