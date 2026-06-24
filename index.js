@@ -14,6 +14,7 @@ const players = {};       // socket.id -> live player
 const scores = {};
 const lastReactionTimes = {};
 const feedMaps = {};      // feedIndex -> dataUrl, so late joiners receive loaded photos
+const feedNames = {};     // feedIndex -> human room label (e.g. "KITCHEN"), synced to all
 const avatars = {};       // socket.id -> painted-avatar dataUrl (the camouflage other players see)
 const playerState = {};   // token -> { isDead }; survives a refresh so reconnects restore state
 let gamePhase = 'LOBBY';
@@ -102,7 +103,7 @@ io.on('connection', (socket) => {
     // Catch a late joiner up to whatever the host already loaded (fixes "NO SIGNAL"
     // for anyone who joins after the photos were uploaded).
     Object.entries(feedMaps).forEach(([feedIndex, dataUrl]) => {
-        socket.emit('loadMap', { feedIndex: Number(feedIndex), dataUrl });
+        socket.emit('loadMap', { feedIndex: Number(feedIndex), dataUrl, name: feedNames[feedIndex] });
     });
 
     // Replay painted disguises so the seeker / latecomers see existing camouflage.
@@ -168,11 +169,12 @@ io.on('connection', (socket) => {
         io.emit('emojiReaction', { emoji: data.emoji, name: data.name });
     });
 
-    socket.on('hostMap', ({ feedIndex, dataUrl }) => {
+    socket.on('hostMap', ({ feedIndex, dataUrl, name }) => {
         if (!isHost(socket)) return;
         feedMaps[feedIndex] = dataUrl;   // remember it for late joiners
-        socket.broadcast.emit('loadMap', { feedIndex, dataUrl });
-        console.log(`🗺️  Map stored + broadcast on feed ${feedIndex}`);
+        if (name) feedNames[feedIndex] = name;
+        socket.broadcast.emit('loadMap', { feedIndex, dataUrl, name });
+        console.log(`🗺️  Map stored + broadcast on feed ${feedIndex} (${name || 'room'})`);
     });
 
     socket.on('claimHost', (token) => {
